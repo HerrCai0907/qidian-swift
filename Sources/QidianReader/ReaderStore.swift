@@ -12,6 +12,12 @@ final class ReaderStore {
         case failed(String)
     }
 
+    /// 分页视图上报给左上角功能菜单的阅读状态。
+    struct ReadingStatus: Equatable {
+        let pageText: String
+        let hint: String
+    }
+
     private(set) var phase: Phase = .idle
     private(set) var isLoggedIn = false
     private(set) var chapter: LoadedChapter?
@@ -19,6 +25,8 @@ final class ReaderStore {
     private(set) var recentBooks: [ReadingHistoryEntry] = []
     /// 每次主动“跳到某个历史位置”时自增，用于让分页视图重新应用锚点。
     private(set) var restoreGeneration = 0
+    /// 当前页码与翻页提示，只显示在功能菜单里。
+    private(set) var readingStatus: ReadingStatus?
 
     /// 用户粘贴的章节链接 / `bookId chapterId`。
     var input = ""
@@ -26,6 +34,7 @@ final class ReaderStore {
     var lineSpacing: Double = 10
     var theme: ReaderTheme = .paper
     var isPresentingLogin = false
+    var isPresentingOpenChapter = false
 
     private var session: QidianReadingSession
     private let history = ReadingHistoryStore()
@@ -138,10 +147,18 @@ final class ReaderStore {
         }
     }
 
+    /// 分页视图在排版/翻页后上报页码与提示，显示在功能菜单顶部。
+    func updateReadingStatus(pageText: String, hint: String) {
+        let status = ReadingStatus(pageText: pageText, hint: hint)
+        guard readingStatus != status else { return }
+        readingStatus = status
+    }
+
     @discardableResult
     private func load(bookId: Int64, chapterId: Int64) async -> Bool {
         loadGeneration &+= 1
         let generation = loadGeneration
+        readingStatus = nil
         phase = .loading("加载正文…")
         do {
             let loaded = try await session.chapter(bookId: bookId, chapterId: chapterId)

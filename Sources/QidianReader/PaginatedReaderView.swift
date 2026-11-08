@@ -29,8 +29,6 @@ struct PagedReaderView: View {
         static let verticalPadding: CGFloat = 14
         static let gutter: CGFloat = 22
         static let pageInset: CGFloat = 22
-        static let footerHeight: CGFloat = 20
-        static let footerSpacing: CGFloat = 10
         static let cornerRadius: CGFloat = 8
     }
 
@@ -44,34 +42,30 @@ struct PagedReaderView: View {
             let metrics = metrics(for: proxy.size)
             let key = paginationKey(textSize: metrics.textSize)
 
-            VStack(spacing: Layout.footerSpacing) {
-                HStack(spacing: Layout.gutter) {
-                    pageCard(index: spreadIndex * 2,
-                             textSize: metrics.textSize,
-                             cardSize: metrics.cardSize)
-                    pageCard(index: spreadIndex * 2 + 1,
-                             textSize: metrics.textSize,
-                             cardSize: metrics.cardSize)
-                }
-                .overlay {
-                    MousePageTurnOverlay(
-                        onLeftClick: { fraction in
-                            isFocused = true
-                            if fraction < 1.0 / 3.0 {
-                                goPrevious()
-                            } else {
-                                goNext()
-                            }
-                        },
-                        onRightClick: {
-                            isFocused = true
+            HStack(spacing: Layout.gutter) {
+                pageCard(index: spreadIndex * 2,
+                         textSize: metrics.textSize,
+                         cardSize: metrics.cardSize)
+                pageCard(index: spreadIndex * 2 + 1,
+                         textSize: metrics.textSize,
+                         cardSize: metrics.cardSize)
+            }
+            .overlay {
+                MousePageTurnOverlay(
+                    onLeftClick: { fraction in
+                        isFocused = true
+                        if fraction < 1.0 / 3.0 {
                             goPrevious()
+                        } else {
+                            goNext()
                         }
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-
-                footer
+                    },
+                    onRightClick: {
+                        isFocused = true
+                        goPrevious()
+                    }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .padding(.horizontal, Layout.horizontalPadding)
             .padding(.vertical, Layout.verticalPadding)
@@ -101,10 +95,7 @@ struct PagedReaderView: View {
     private func metrics(for size: CGSize) -> Metrics {
         let availableWidth = max(1, size.width - Layout.horizontalPadding * 2)
         let cardWidth = max(120, (availableWidth - Layout.gutter) / 2)
-        let availableHeight = max(1, size.height
-            - Layout.verticalPadding * 2
-            - Layout.footerHeight
-            - Layout.footerSpacing)
+        let availableHeight = max(1, size.height - Layout.verticalPadding * 2)
         let cardHeight = max(120, availableHeight)
         let textSize = CGSize(
             width: max(60, cardWidth - Layout.pageInset * 2),
@@ -140,31 +131,14 @@ struct PagedReaderView: View {
         }
     }
 
-    // MARK: - Footer
+    // MARK: - Menu status
 
-    private var footer: some View {
-        HStack(spacing: 10) {
-            Text(chapter.bookName.isEmpty ? chapter.title : chapter.bookName)
-                .lineLimit(1)
-                .truncationMode(.middle)
-
-            Spacer(minLength: 8)
-
-            Text(footerHint)
-                .lineLimit(1)
-                .foregroundStyle(store.theme.tertiaryForeground)
-
-            Spacer(minLength: 8)
-
-            Text(pageIndicator)
-                .monospacedDigit()
-        }
-        .font(.caption)
-        .foregroundStyle(store.theme.secondaryForeground)
-        .frame(height: Layout.footerHeight)
+    /// 页码与翻页提示不再占据页面底部，而是上报给左上角功能菜单。
+    private func publishReadingStatus() {
+        store.updateReadingStatus(pageText: pageIndicator, hint: turnHint)
     }
 
-    private var footerHint: String {
+    private var turnHint: String {
         guard let pagination, !pagination.ranges.isEmpty else { return "" }
         let lastSpread = max(0, (pagination.ranges.count - 1) / 2)
         guard spreadIndex >= lastSpread else {
@@ -199,6 +173,7 @@ struct PagedReaderView: View {
             spreadIndex += 1
             anchor = pagination.ranges[spreadIndex * 2].location
             recordProgress()
+            publishReadingStatus()
             return
         }
 
@@ -214,6 +189,7 @@ struct PagedReaderView: View {
             spreadIndex -= 1
             anchor = pagination.ranges[spreadIndex * 2].location
             recordProgress()
+            publishReadingStatus()
             return
         }
 
@@ -304,6 +280,7 @@ struct PagedReaderView: View {
         if contentChanged || resumeAnchor != nil {
             recordProgress()
         }
+        publishReadingStatus()
     }
 
     /// 当前左页起点相对正文起点的偏移，写入历史记录。
