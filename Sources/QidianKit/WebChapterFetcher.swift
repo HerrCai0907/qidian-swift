@@ -23,12 +23,20 @@ public final class WebChapterFetcher {
     /// 非持久化数据存储，避免污染用户浏览数据；进程内复用。
     private var webView: WKWebView?
 
+    /// 离屏 WebView 是单实例，必须串行使用：否则自动预取与用户翻页
+    /// 同时进行时，后一次 `load` 会打断前一次，读到错误的章节 DOM。
+    private var isFetching = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
     public init() {}
 
     public func fetch(bookId: Int64,
                       chapterId: Int64,
                       cookies: CookieJar,
                       timeout: TimeInterval = 20) async throws -> [String] {
+        await acquireWebView()
+        defer { releaseWebView() }
+
         #if canImport(AppKit)
         _ = NSApplication.shared
         #endif
@@ -62,6 +70,25 @@ public final class WebChapterFetcher {
         let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 430, height: 932), configuration: config)
         web.customUserAgent = QidianClient.mobileUserAgent
         return web
+    }
+
+    private func acquireWebView() async {
+        if !isFetching {
+            isFetching = true
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiting.append(continuation)
+        }
+    }
+
+    private func releaseWebView() {
+        if waiting.isEmpty {
+            isFetching = false
+        } else {
+            // 所有权直接转交给下一个等待者，isFetching 保持 true。
+            waiting.removeFirst().resume()
+        }
     }
 
     private func extractParagraphs(from web: WKWebView, chapterId: Int64) async throws -> [String] {

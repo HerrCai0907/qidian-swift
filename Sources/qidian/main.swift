@@ -59,18 +59,22 @@ struct QidianCLI {
 
             case "read":
                 var allowWeb = true
+                var prefetch = true
                 var inputParts: [String] = []
                 for part in rest {
                     if part == "--no-web" { allowWeb = false }
+                    else if part == "--no-prefetch" { prefetch = false }
                     else { inputParts.append(part) }
                 }
                 let input = inputParts.joined(separator: " ")
                 guard let ref = ChapterRef(input) else {
-                    throw CLIError.usage("用法: qidian read <章节链接 | bookId chapterId> [--no-web]")
+                    throw CLIError.usage(
+                        "用法: qidian read <章节链接 | bookId chapterId> [--no-web] [--no-prefetch]")
                 }
 
                 let session = QidianReadingSession(cookieFile: cookieURL)
                 session.allowsWebDecryption = allowWeb
+                session.prefetchNextChapter = prefetch
                 let chapter = try await session.open(ref)
 
                 if chapter.isPreview {
@@ -81,8 +85,23 @@ struct QidianCLI {
                     FileHandle.standardError.write(
                         Data("ℹ️ 密文正文已通过 WebKit + Fock 解出。\n".utf8))
                 }
+                if chapter.isFromCache {
+                    let path = session.cachedFileURL(bookId: chapter.bookId,
+                                                     chapterId: chapter.chapterId)?.path ?? "~/.qidian"
+                    FileHandle.standardError.write(
+                        Data("ℹ️ 已从本地缓存读取：\(path)\n".utf8))
+                }
 
                 print(render(chapter))
+
+                // CLI 退出会把后台预取一起带走，这里等它落盘；GUI 里则不需要。
+                if prefetch, let nextId = chapter.nextId, nextId > 0 {
+                    await session.waitForPrefetch()
+                    reportPrefetch(session: session,
+                                   bookId: chapter.bookId,
+                                   nextId: nextId,
+                                   nextName: chapter.nextName)
+                }
                 return 0
 
             default:
@@ -120,6 +139,31 @@ struct QidianCLI {
         return saved ? 0 : 1
     }
 
+    private static func reportPrefetch(session: QidianReadingSession,
+                                       bookId: Int64,
+                                       nextId: Int64,
+                                       nextName: String?) {
+        let label = nextName.map { "《\($0)》" } ?? "下一章"
+        switch session.prefetchOutcome(chapterId: nextId) {
+        case .cached:
+            let path = session.cachedFileURL(bookId: bookId, chapterId: nextId)?.path
+                ?? "~/.qidian"
+            FileHandle.standardError.write(
+                Data("ℹ️ 已自动缓存\(label)：\(path)\n".utf8))
+        case .ignoredNotPurchased:
+            FileHandle.standardError.write(
+                Data("ℹ️ \(label)未购买，已忽略自动缓存。\n".utf8))
+        case .failed:
+            // 后台预取失败不影响当前阅读，静默处理。
+            break
+        case nil:
+            if let path = session.cachedFileURL(bookId: bookId, chapterId: nextId)?.path {
+                FileHandle.standardError.write(
+                    Data("ℹ️ \(label)已在本地缓存：\(path)\n".utf8))
+            }
+        }
+    }
+
     private static func render(_ chapter: LoadedChapter) -> String {
         var out = ""
         if !chapter.bookName.isEmpty {
@@ -147,7 +191,7 @@ struct QidianCLI {
 
         用法:
           qidian login
-          qidian read <章节链接 | bookId chapterId> [--no-web]
+          qidian read <章节链接 | bookId chapterId> [--no-web] [--no-prefetch]
 
         示例:
           qidian login
@@ -159,8 +203,13 @@ struct QidianCLI {
           · 免费章节直接由接口返回明文。
           · VIP 已购章节返回 Fock 密文，默认用离屏 WKWebView 解密；
             --no-web 时只调用接口。
+          · 读完当前章后会自动在后台尝试缓存下一章；下一章未购买（只能试读）
+            时按约定忽略。--no-prefetch 可关闭这个行为。
+          · 下载过的完整章节按书名保存在 ~/.qidian/<书名>/<chapterId>.json，
+            再次阅读同一章时优先读本地缓存。
           · Cookie 默认保存在 ~/.qidian/cookies.json，
-            可用全局参数 --cookies <path> 指定。
+            可用全局参数 --cookies <path> 指定；缓存根目录可用
+            环境变量 QIDIAN_CACHE 覆盖。
         """)
     }
 }

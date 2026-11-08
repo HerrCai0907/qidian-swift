@@ -58,4 +58,94 @@ final class QidianKitTests: XCTestCase {
         XCTAssertNil(ChapterRef("随便一段文字"))
         XCTAssertNil(ChapterRef(""))
     }
+
+    // MARK: - Local chapter cache
+
+    func testChapterCacheRoundTripUsesBookNameDirectory() throws {
+        let root = temporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let cache = ChapterCache(root: root)
+        let chapter = makeChapter()
+        let url = try XCTUnwrap(cache.save(chapter))
+
+        let bookDirectory = root.appendingPathComponent("牧者密续", isDirectory: true)
+        XCTAssertEqual(url.deletingLastPathComponent().standardizedFileURL,
+                       bookDirectory.standardizedFileURL)
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: bookDirectory.appendingPathComponent(ChapterCache.metadataFileName).path))
+
+        // 重新建一个实例，验证能从磁盘扫描到书目录。
+        let reopened = ChapterCache(root: root)
+        let restored = try XCTUnwrap(reopened.load(bookId: 1037095853, chapterId: 801714441))
+        XCTAssertEqual(restored.paragraphs, ["第一段", "第二段"])
+        XCTAssertEqual(restored.title, "第三百五十七章 法之书的进化")
+        XCTAssertEqual(restored.nextId, 801810226)
+        XCTAssertTrue(restored.isFromCache)
+        XCTAssertFalse(restored.isPreview)
+        XCTAssertTrue(reopened.isCached(bookId: 1037095853, chapterId: 801714441))
+        XCTAssertEqual(reopened.cachedChapterIds(bookId: 1037095853), [801714441])
+    }
+
+    func testChapterCacheSkipsPreviewAndEmptyContent() {
+        let root = temporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let cache = ChapterCache(root: root)
+        XCTAssertNil(cache.save(makeChapter(isPreview: true)))
+        XCTAssertNil(cache.save(makeChapter(paragraphs: [])))
+        XCTAssertFalse(cache.isCached(bookId: 1037095853, chapterId: 801714441))
+    }
+
+    func testChapterCacheSanitizesFolderNameAndSeparatesSameTitleBooks() throws {
+        let root = temporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let cache = ChapterCache(root: root)
+        let first = makeChapter(bookId: 1, bookName: "牧者/密续: 上", chapterId: 10)
+        let second = makeChapter(bookId: 2, bookName: "牧者/密续: 上", chapterId: 20)
+        XCTAssertNotNil(cache.save(first))
+        XCTAssertNotNil(cache.save(second))
+
+        let names = try FileManager.default.contentsOfDirectory(atPath: root.path)
+            .filter { !$0.hasPrefix(".") }
+        XCTAssertEqual(names.count, 2)
+        XCTAssertTrue(names.allSatisfy { !$0.contains("/") && !$0.contains(":") })
+
+        XCTAssertEqual(cache.load(bookId: 1, chapterId: 10)?.bookId, 1)
+        XCTAssertEqual(cache.load(bookId: 2, chapterId: 20)?.bookId, 2)
+        XCTAssertNil(cache.load(bookId: 1, chapterId: 20))
+    }
+
+    // MARK: - Helpers
+
+    private func temporaryCacheRoot() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("qidian-cache-test-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    private func makeChapter(bookId: Int64 = 1037095853,
+                             bookName: String = "牧者密续",
+                             chapterId: Int64 = 801714441,
+                             paragraphs: [String] = ["第一段", "第二段"],
+                             isPreview: Bool = false) -> LoadedChapter {
+        LoadedChapter(
+            chapterId: chapterId,
+            bookId: bookId,
+            bookName: bookName,
+            authorName: "不祈十弦",
+            title: "第三百五十七章 法之书的进化",
+            volumeName: "喰主之钥",
+            paragraphs: paragraphs,
+            prevId: 801550399,
+            nextId: 801810226,
+            prevName: "第三百五十六章 大罪卡：狂猎之王",
+            nextName: "第三百五十八章 冬天司的诞生",
+            wordsCount: 5178,
+            authorSay: nil,
+            decryptedByWeb: false,
+            isPreview: isPreview,
+            isFromCache: false
+        )
+    }
 }

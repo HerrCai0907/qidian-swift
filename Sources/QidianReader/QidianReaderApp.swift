@@ -177,6 +177,9 @@ struct ReaderView: View {
                         Text(volume)
                     }
                     Text("\(chapter.wordsCount) 字")
+                    if chapter.isFromCache {
+                        Text("本地缓存")
+                    }
                     if chapter.isPreview {
                         Text("试读").foregroundStyle(.orange)
                     }

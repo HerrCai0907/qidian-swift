@@ -369,7 +369,7 @@ unicode-range: U+3400-4DB5;
 
 ---
 
-## 7. 映射到 Swift（MVP：登录 + 阅读）
+## 7. 映射到 Swift（登录 + 阅读 + 缓存）
 
 | 能力 | Swift 类型 | 实现 |
 |---|---|---|
@@ -377,9 +377,12 @@ unicode-range: U+3400-4DB5;
 | 正文解析 | `ChapterHTMLParser` | `<p>` / `span.content-text` → `[String]` |
 | 链接解析 | `ChapterRef` | 支持 PC/移动站 URL 与 `bookId chapterId` |
 | 会话 | `CookieJar` | `~/.qidian/cookies.json` |
-| 付费解密 | `WebChapterFetcher` | 离屏 WKWebView + Fock |
-| 编排 | `QidianReadingSession` | API 优先，密文回退 WebKit |
+| 本地缓存 | `ChapterCache` | 完整章节按书名写入 `~/.qidian/<书名>/<chapterId>.json` |
+| 付费解密 | `WebChapterFetcher` | 离屏 WKWebView + Fock（全局串行） |
+| 编排 | `QidianReadingSession` | 缓存优先，密文回退 WebKit；读完自动预取下一章 |
 | 登录 | `QidianLoginWindowController` | 真实登录页 + 自动抓 Cookie |
+
+自动预取只向后看一章：当前章拿到 `next` 后再请求一次；若返回 `isBuy == 0` 的试读片段，则按约定忽略，不写缓存、也不继续往后爬。因此不会对目录或整书产生批量请求。
 
 MVP 客户端只依赖 `getMChapterInfo` 一个 JSON 接口；目录、搜索、书籍详情、评论、书签等端点保留在本文档中作为扩展参考。
 
