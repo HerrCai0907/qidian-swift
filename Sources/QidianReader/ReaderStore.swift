@@ -18,11 +18,22 @@ final class ReaderStore {
         let hint: String
     }
 
+    /// 目录里可切换的书籍：当前书 + 读过的书。
+    struct CatalogBook: Identifiable, Equatable {
+        let bookId: Int64
+        let bookName: String
+        var id: Int64 { bookId }
+    }
+
     private(set) var phase: Phase = .idle
     private(set) var isLoggedIn = false
     private(set) var chapter: LoadedChapter?
     /// 之前读过的书，按最近阅读排序（每本书一条）。
     private(set) var recentBooks: [ReadingHistoryEntry] = []
+    /// 当前加载/展示的目录。
+    private(set) var catalog: BookCatalog?
+    private(set) var catalogPhase: Phase = .idle
+    private(set) var catalogBookId: Int64?
     /// 每次主动“跳到某个历史位置”时自增，用于让分页视图重新应用锚点。
     private(set) var restoreGeneration = 0
     /// 当前页码与翻页提示，只显示在功能菜单里。
@@ -35,12 +46,14 @@ final class ReaderStore {
     var theme: ReaderTheme = .paper
     var isPresentingLogin = false
     var isPresentingOpenChapter = false
+    var isPresentingCatalog = false
 
     private var session: QidianReadingSession
     private let history = ReadingHistoryStore()
     private var pendingRestore: ReadingHistoryEntry?
     private var didAttemptRestore = false
     private var loadGeneration = 0
+    private var catalogGeneration = 0
 
     init() {
         if let jar = try? CookieJar.load(from: CookieJar.defaultURL) {
@@ -124,6 +137,84 @@ final class ReaderStore {
         guard let current = chapter else { return }
         pendingRestore = nil
         await load(bookId: current.bookId, chapterId: current.chapterId)
+    }
+
+    // MARK: - Catalog
+
+    /// 目录 sheet 顶部可切换的书籍。
+    var catalogBooks: [CatalogBook] {
+        var books: [CatalogBook] = []
+        if let chapter {
+            books.append(CatalogBook(bookId: chapter.bookId, bookName: chapter.bookName))
+        }
+        for entry in recentBooks where !books.contains(where: { $0.bookId == entry.bookId }) {
+            books.append(CatalogBook(bookId: entry.bookId, bookName: entry.bookName))
+        }
+        if let catalogBookId, !books.contains(where: { $0.bookId == catalogBookId }) {
+            books.append(CatalogBook(bookId: catalogBookId, bookName: ""))
+        }
+        return books
+    }
+
+    var catalogBookName: String? {
+        if let catalog, catalog.bookId == catalogBookId, !catalog.bookName.isEmpty {
+            return catalog.bookName
+        }
+        let name = catalogBooks.first { $0.bookId == catalogBookId }?.bookName ?? ""
+        return name.isEmpty ? nil : name
+    }
+
+    /// 目录中高亮“在读”的章节；目录切换到别的书时为 nil。
+    var currentCatalogChapterId: Int64? {
+        guard let chapter,
+              let selectedBookId = catalog?.bookId ?? catalogBookId,
+              chapter.bookId == selectedBookId else { return nil }
+        return chapter.chapterId
+    }
+
+    /// 从功能菜单打开目录。默认展示当前书；没有在读的书时退回最近读过/上次看过的书。
+    func presentCatalog() {
+        isPresentingCatalog = true
+        guard let target = chapter?.bookId ?? recentBooks.first?.bookId ?? catalogBookId else {
+            catalog = nil
+            catalogPhase = .idle
+            catalogBookId = nil
+            return
+        }
+
+        let needsLoad = catalog?.bookId != target
+        catalogBookId = target
+        if needsLoad {
+            Task { await loadCatalog(bookId: target) }
+        }
+    }
+
+    /// 加载（或刷新）一本书的目录。
+    func loadCatalog(bookId: Int64, forceRefresh: Bool = false) async {
+        catalogGeneration &+= 1
+        let generation = catalogGeneration
+        catalogBookId = bookId
+        if catalog?.bookId != bookId {
+            catalog = nil
+        }
+        catalogPhase = .loading("加载目录…")
+        do {
+            let loaded = try await session.catalog(bookId: bookId, forceRefresh: forceRefresh)
+            guard generation == catalogGeneration else { return }
+            catalog = loaded
+            catalogPhase = .idle
+        } catch {
+            guard generation == catalogGeneration else { return }
+            catalogPhase = .failed(error.localizedDescription)
+        }
+    }
+
+    /// 从目录选章：先关掉 sheet，再载入章节。
+    func openCatalogChapter(_ item: CatalogChapter) {
+        guard let bookId = catalog?.bookId ?? catalogBookId else { return }
+        isPresentingCatalog = false
+        pendingRestore = nil
+        Task { await load(bookId: bookId, chapterId: item.chapterId) }
     }
 
     /// 分页视图完成排版后取走待恢复的位置（启动恢复或切换书籍），只消费一次。

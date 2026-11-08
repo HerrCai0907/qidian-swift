@@ -59,6 +59,88 @@ final class QidianKitTests: XCTestCase {
         XCTAssertNil(ChapterRef(""))
     }
 
+    func testBookReferenceParsing() {
+        XCTAssertEqual(BookRef("https://www.qidian.com/book/1037095853/")?.bookId, 1037095853)
+        XCTAssertEqual(BookRef("https://m.qidian.com/book/1037095853/?source=pc_jump")?.bookId, 1037095853)
+        XCTAssertEqual(BookRef("1037095853")?.bookId, 1037095853)
+        XCTAssertNil(BookRef(""))
+        XCTAssertNil(BookRef("随便一段文字"))
+        XCTAssertNil(BookRef("0"))
+        XCTAssertNil(BookRef("1037095853 801714441"))
+    }
+
+    // MARK: - Catalog
+
+    func testCatalogDecodingAndLookup() throws {
+        let json = """
+        {"code":0,"data":{
+        "bookId":1037095853,"bookName":"牧者密续","chapterTotalCnt":2,
+        "bookStatus":"完本","limitFreeType":3,"salesMode":1,
+        "vs":[
+          {"vId":109516838,"vN":"玻璃台阶","cCnt":1,"wC":242664,
+           "cs":[{"id":753919666,"cN":"第一章 你是来逮捕我的吗","cnt":3659,
+                  "uT":"2023-05-21 07:33:10","sS":1,"uuid":1}]},
+          {"vId":109516839,"vN":"","cCnt":1,"wC":1000,
+           "cs":[{"id":753919667,"cN":"","cnt":0,"uT":"","sS":0,"uuid":2}]}
+        ]}}
+        """.data(using: .utf8)!
+
+        let envelope = try JSONDecoder().decode(APIEnvelope<BookCatalog>.self, from: json)
+        let catalog = try XCTUnwrap(envelope.data)
+        XCTAssertTrue(envelope.isOK)
+        XCTAssertEqual(catalog.bookId, 1037095853)
+        XCTAssertEqual(catalog.bookName, "牧者密续")
+        XCTAssertEqual(catalog.bookStatus, "完本")
+        XCTAssertEqual(catalog.volumes.count, 2)
+        XCTAssertEqual(catalog.chapterCount, 2)
+        XCTAssertFalse(catalog.isEmpty)
+
+        XCTAssertEqual(catalog.volumes[0].displayName, "玻璃台阶")
+        XCTAssertEqual(catalog.volumes[1].displayName, "正文")
+        XCTAssertEqual(catalog.allChapters.map(\.chapterId), [753919666, 753919667])
+        XCTAssertTrue(catalog.allChapters[0].isPaid)
+        XCTAssertFalse(catalog.allChapters[1].isPaid)
+        XCTAssertEqual(catalog.allChapters[1].displayTitle, "章节 753919667")
+        XCTAssertEqual(catalog.allChapters[1].uuid, 2)
+
+        XCTAssertEqual(catalog.chapter(withId: 753919667)?.uuid, 2)
+        XCTAssertEqual(catalog.volume(containing: 753919667)?.volumeId, 109516839)
+        XCTAssertNil(catalog.chapter(withId: 42))
+    }
+
+    func testCatalogSearchMatchesTitle() throws {
+        let catalog = BookCatalog(
+            bookId: 1,
+            bookName: "书",
+            chapterTotalCnt: 2,
+            volumes: [
+                CatalogVolume(volumeId: 10, name: "第一卷", chapters: [
+                    CatalogChapter(chapterId: 100, title: "第一章 开始", wordCount: 100, uuid: 900),
+                    CatalogChapter(chapterId: 101, title: "第二章 风起", wordCount: 200, uuid: 2),
+                ])
+            ]
+        )
+
+        XCTAssertEqual(catalog.chapters(matching: "").count, 2)
+        XCTAssertEqual(catalog.chapters(matching: "开始").map(\.chapterId), [100])
+        XCTAssertEqual(catalog.chapters(matching: "风起").map(\.chapterId), [101])
+        XCTAssertTrue(catalog.chapters(matching: "不存在").isEmpty)
+        XCTAssertTrue(catalog.chapters(matching: "900").isEmpty)
+    }
+
+    func testCatalogToleratesMissingCollections() throws {
+        let json = """
+        {"code":0,"data":{"bookId":9,"bookName":"只有书","vs":[{"vId":1,"vN":"卷"}]}}
+        """.data(using: .utf8)!
+
+        let envelope = try JSONDecoder().decode(APIEnvelope<BookCatalog>.self, from: json)
+        let catalog = try XCTUnwrap(envelope.data)
+        XCTAssertEqual(catalog.bookId, 9)
+        XCTAssertEqual(catalog.volumes.count, 1)
+        XCTAssertTrue(catalog.volumes[0].chapters.isEmpty)
+        XCTAssertTrue(catalog.isEmpty)
+    }
+
     // MARK: - Local chapter cache
 
     func testChapterCacheRoundTripUsesBookNameDirectory() throws {

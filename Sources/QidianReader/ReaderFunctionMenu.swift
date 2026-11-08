@@ -12,6 +12,7 @@ struct ReaderFunctionMenu: View {
             readingInfo
             Divider()
             Menu("切换书籍") { bookList }
+            Button("章节目录…") { store.presentCatalog() }
             Button("打开章节链接…") { store.isPresentingOpenChapter = true }
             Divider()
             fontSizeMenu

@@ -41,7 +41,7 @@
 | 编码 | UTF-8 |
 | JSON 信封 | `{"code":0,"data":…,"msg":"","serverTime":1794124555}` |
 | 鉴权 | Cookie 会话 + `_csrfToken`（同时放 Cookie 和 query） |
-| 分页 | 评论用 `page`；目录一次性返回全书 1373 章（约 143 KB） |
+| 分页 | 评论用 `page`；目录一次性返回全书 1373 章（约 180 KB） |
 
 `code` 约定：`0` 成功；`404` 接口不存在；`-3` 参数错误；其它见 `msg`。
 
@@ -138,10 +138,12 @@ GET /webcommon/book/mCategory?bookId={bookId}&_csrfToken={token}
 | `cs[].cnt` | 字数 |
 | `cs[].uT` | 更新时间 |
 | `cs[].sS` | 1=收费章节，0=免费 |
-| `cs[].uuid` | 全书序号（从 1 开始） |
+| `cs[].uuid` | 接口内部的章节序号；**实测不保证按目录顺序递增**（作者调整章节后仍保留原值），展示顺序一律以 `vs[].cs[]` 数组为准 |
 | `limitFreeType` | 限免策略：1/2/3 对应不同的限免窗口 |
 
 > 注意：`sS == 1` 不代表一定不可读。限免活动期间仍标 1，实际以章节接口的 `price` / `isBuy` 为准。
+
+> 客户端实现：`QidianClient.catalog(bookId:)` 把响应解码成 `BookCatalog` / `CatalogVolume` / `CatalogChapter`；`QidianReadingSession.catalog(bookId:forceRefresh:)` 在进程内按 `bookId` 缓存整份目录，功能菜单「章节目录…」按卷展示并支持搜索、选章。
 
 ### 4.2 章节 + 正文
 
@@ -369,13 +371,14 @@ unicode-range: U+3400-4DB5;
 
 ---
 
-## 7. 映射到 Swift（登录 + 阅读 + 缓存 + 进度）
+## 7. 映射到 Swift（登录 + 目录 + 阅读 + 缓存 + 进度）
 
 | 能力 | Swift 类型 | 实现 |
 |---|---|---|
+| 目录 | `BookCatalog` / `CatalogVolume` / `CatalogChapter` | `QidianClient.catalog(bookId:)`；`QidianReadingSession.catalog(bookId:forceRefresh:)` 按书缓存 |
 | 章节 | `ChapterData` / `ChapterInfo` | `QidianClient.chapter(bookId:chapterId:)` |
 | 正文解析 | `ChapterHTMLParser` | `<p>` / `span.content-text` → `[String]` |
-| 链接解析 | `ChapterRef` | 支持 PC/移动站 URL 与 `bookId chapterId` |
+| 链接解析 | `ChapterRef` / `BookRef` | 章节支持 PC/移动站 URL 与 `bookId chapterId`；目录支持书籍页 URL 与纯 bookId |
 | 会话 | `CookieJar` | `~/.qidian/cookies.json` |
 | 本地缓存 | `ChapterCache` | 完整章节按书名写入 `~/.qidian/<书名>/<chapterId>.json` |
 | 阅读进度 | `ReadingHistoryStore` | 每本书一条，写入 `~/.qidian/progress.json`；启动时恢复章节和正文锚点 |
@@ -385,7 +388,7 @@ unicode-range: U+3400-4DB5;
 
 自动预取只向后看一章：当前章拿到 `next` 后再请求一次；若返回 `isBuy == 0` 的试读片段，则按约定忽略，不写缓存、也不继续往后爬。因此不会对目录或整书产生批量请求。
 
-MVP 客户端只依赖 `getMChapterInfo` 一个 JSON 接口；目录、搜索、书籍详情、评论、书签等端点保留在本文档中作为扩展参考。
+MVP 客户端依赖 `getMChapterInfo` 和 `mCategory` 两个 JSON 接口；mCategory 每个进程内每本书只请求一次，除非用户手动刷新。搜索、书籍详情、评论、书签等端点保留在本文档中作为扩展参考。
 
 ## 8. 合规提示
 
