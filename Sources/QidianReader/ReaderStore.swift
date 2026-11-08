@@ -70,9 +70,10 @@ final class ReaderStore {
         await load(bookId: ref.bookId, chapterId: ref.chapterId)
     }
 
-    func openAdjacent(_ id: Int64?) async {
-        guard let id, let current = chapter else { return }
-        await load(bookId: current.bookId, chapterId: id)
+    @discardableResult
+    func openAdjacent(_ id: Int64?) async -> Bool {
+        guard let id, let current = chapter else { return false }
+        return await load(bookId: current.bookId, chapterId: id)
     }
 
     func retry() async {
@@ -80,15 +81,18 @@ final class ReaderStore {
         await load(bookId: current.bookId, chapterId: current.chapterId)
     }
 
-    private func load(bookId: Int64, chapterId: Int64) async {
+    @discardableResult
+    private func load(bookId: Int64, chapterId: Int64) async -> Bool {
         phase = .loading("加载正文…")
         do {
             let loaded = try await session.chapter(bookId: bookId, chapterId: chapterId)
             chapter = loaded
             input = "https://www.qidian.com/chapter/\(bookId)/\(chapterId)/"
             phase = .idle
+            return true
         } catch {
             phase = .failed(error.localizedDescription)
+            return false
         }
     }
 }
@@ -115,6 +119,31 @@ enum ReaderTheme: String, CaseIterable, Identifiable {
 
     var foreground: Color {
         self == .night ? Color(white: 0.82) : Color(red: 0.15, green: 0.14, blue: 0.12)
+    }
+
+    var secondaryForeground: Color {
+        foreground.opacity(0.55)
+    }
+
+    var tertiaryForeground: Color {
+        foreground.opacity(0.40)
+    }
+
+    /// 分页纸面的底色，比整页背景略亮/略暗一点，突出“左右两页”。
+    var pageBackground: Color {
+        switch self {
+        case .paper: return Color(red: 0.98, green: 0.96, blue: 0.90)
+        case .white: return .white
+        case .night: return Color(red: 0.12, green: 0.12, blue: 0.14)
+        }
+    }
+
+    var pageBorder: Color {
+        self == .night ? Color.white.opacity(0.08) : Color.black.opacity(0.08)
+    }
+
+    var pageShadow: Color {
+        self == .night ? Color.black.opacity(0.45) : Color.black.opacity(0.10)
     }
 }
 

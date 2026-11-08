@@ -2,7 +2,14 @@
 
 只做三件事：**登录**、**阅读**、**把下载过的章节留在本地**。
 
-把章节链接粘进窗口就能读，支持上下章、字号、行距、纸黄/纯白/夜间主题。付费已购章节也能读——正文由官方 Fock 模块加密，客户端用离屏 `WKWebView` 复用官方解密。
+把章节链接粘进窗口就能读。正文不会像浏览器那样竖向滚动，而是按窗口大小自动分页，**左右各一页**：
+
+- 点击左侧：上一页
+- 点击中间或右侧：下一页
+- 本章最后一页再点下一页：自动进入下一章
+- 本章第一页再点左侧：进入上一章，并落在最后一页
+
+付费已购章节也能读——正文由官方 Fock 模块加密，客户端用离屏 `WKWebView` 复用官方解密。
 
 读过的完整章节会按书名缓存到 `~/.qidian/<书名>/`；读完当前章后还会自动尝试缓存下一章。下一章如果没购买（只能拿到试读片段），直接忽略，不会落盘。
 
@@ -27,6 +34,17 @@ swift test --disable-sandbox
 ```
 
 > 如果窗口没有出现在前台：先 `killall QidianReader`，再重新运行。应用启动时会把自己的激活策略设为普通 App 并主动抢焦点；早期构建没有这一步，窗口会创建但藏在后台。
+
+---
+
+## 分页阅读
+
+正文用 CoreText 按当前窗口大小、字号、行距排版，再切成左右两页显示：
+
+- 左侧 1/3 区域：上一页；在第一章第一页时继续点，会进入上一章并落在最后一页。
+- 中间 1/3、右侧 1/3 区域：下一页；在本章最后一页继续点，会加载下一章。
+- 调整窗口大小或字号/行距后会自动重新分页，并尽量停留在当前阅读位置。
+- 页脚显示书名、当前页码和“下一页”提示；最后一页会提示下一章标题。
 
 ---
 
@@ -60,7 +78,7 @@ swift test --disable-sandbox
 | 能力 | 实现 |
 |---|---|
 | 登录 | `WKWebView` 打开真实登录页，轮询到 `ywkey` 后保存 Cookie |
-| 阅读 | `getMChapterInfo` 取章节 + 正文；密文回退 `WKWebView` 解密 |
+| 阅读 | `getMChapterInfo` 取章节 + 正文；密文回退 `WKWebView` 解密；CoreText 分页为左右双页 |
 | 本地缓存 | 完整章节按书名写入 `~/.qidian/<书名>/<chapterId>.json`；读完自动预取下一章，未购买则忽略 |
 
 刻意没做：搜索、书籍详情、目录、书架、评论、月票、阅读进度同步。
@@ -81,7 +99,11 @@ QidianKit/
 │   │   ├── ChapterCache.swift         # 按书名分目录的章节缓存
 │   │   ├── QidianReadingSession.swift # 缓存优先 + 自动预取 + 密文回退 WebKit
 │   │   └── WebChapterFetcher.swift    # 离屏 WKWebView + Fock（串行复用）
-│   └── QidianReader/                  # SwiftUI macOS 客户端（含登录 sheet）
+│   └── QidianReader/
+│       ├── QidianReaderApp.swift      # 窗口、顶部栏、欢迎页
+│       ├── PaginatedReaderView.swift  # 双页分页 + CoreText 排版
+│       ├── ReaderStore.swift          # 阅读状态 / 登录态 / 主题
+│       └── LoginSheet.swift           # 登录 sheet
 ├── Tests/QidianKitTests/              # 9 个单测
 └── docs/
     └── API.md                      # 接口分析
@@ -95,14 +117,14 @@ QidianKit/
 粘贴链接
   → ChapterRef 解析出 bookId / chapterId
   → 查 ~/.qidian/<书名>/<chapterId>.json
-       └─ 命中：直接渲染，并在后台预取下一章
+       └─ 命中：直接分页渲染，并在后台预取下一章
   → 未命中：GET /webcommon/chapter/getMChapterInfo
        ├─ 免费章：<p> 明文 HTML → 段落
        └─ 已购章：Base64 密文 + fkp
               → 离屏 WKWebView 加载 /chapter/{bookId}/{chapterId}/
               → 官方 Fock 解密后读 span.content-text
   → 写入本地缓存（试读不写）
-  → SwiftUI 渲染
+  → CoreText 按窗口大小分页 → SwiftUI 左右双页渲染
   → 后台尝试缓存下一章；下一章未购买则忽略
 ```
 

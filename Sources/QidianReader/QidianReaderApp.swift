@@ -157,94 +157,9 @@ struct WelcomeView: View {
 
 struct ReaderView: View {
     let chapter: LoadedChapter
-    @Environment(ReaderStore.self) private var store
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: store.lineSpacing) {
-                Text(chapter.title)
-                    .font(.system(size: store.fontSize + 8, weight: .semibold, design: .serif))
-                    .foregroundStyle(store.theme.foreground)
-
-                HStack(spacing: 8) {
-                    if !chapter.bookName.isEmpty {
-                        Text("《\(chapter.bookName)》")
-                    }
-                    if !chapter.authorName.isEmpty {
-                        Text(chapter.authorName)
-                    }
-                    if let volume = chapter.volumeName {
-                        Text(volume)
-                    }
-                    Text("\(chapter.wordsCount) 字")
-                    if chapter.isFromCache {
-                        Text("本地缓存")
-                    }
-                    if chapter.isPreview {
-                        Text("试读").foregroundStyle(.orange)
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-                if chapter.isPreview {
-                    Text("当前仅能读到试读片段，订阅本章后可读全文。")
-                        .font(.callout)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                        .foregroundStyle(.orange)
-                }
-
-                Divider().padding(.vertical, 8)
-
-                ForEach(Array(chapter.paragraphs.enumerated()), id: \.offset) { _, paragraph in
-                    Text("　　" + paragraph)
-                        .font(.system(size: store.fontSize, design: .serif))
-                        .lineSpacing(store.lineSpacing)
-                        .foregroundStyle(store.theme.foreground)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                if let say = chapter.authorSay, !say.isEmpty {
-                    Divider().padding(.vertical, 12)
-                    Text("作者说").font(.caption.bold()).foregroundStyle(.secondary)
-                    Text(say)
-                        .font(.system(size: store.fontSize - 2, design: .serif))
-                        .foregroundStyle(.secondary)
-                }
-
-                HStack(spacing: 12) {
-                    Button {
-                        Task { await store.openAdjacent(chapter.prevId) }
-                    } label: {
-                        Label(chapter.prevName.map { "上一章 · \($0)" } ?? "上一章",
-                              systemImage: "chevron.left")
-                            .lineLimit(1)
-                    }
-                    .disabled(chapter.prevId == nil)
-
-                    Spacer()
-
-                    Button {
-                        Task { await store.openAdjacent(chapter.nextId) }
-                    } label: {
-                        Label(chapter.nextName.map { "下一章 · \($0)" } ?? "下一章",
-                              systemImage: "chevron.right")
-                            .lineLimit(1)
-                    }
-                    .disabled(chapter.nextId == nil)
-                }
-                .buttonStyle(.bordered)
-                .padding(.top, 24)
-                .padding(.bottom, 44)
-            }
-            .frame(maxWidth: 760)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 32)
-            .padding(.top, 32)
-        }
+        PagedReaderView(chapter: chapter)
     }
 }
 
