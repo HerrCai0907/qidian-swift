@@ -80,6 +80,9 @@ struct RootView: View {
         .sheet(isPresented: $store.isPresentingOpenChapter) {
             OpenChapterSheet()
         }
+        .sheet(isPresented: $store.isPresentingCatalog) {
+            ChapterCatalogSheet()
+        }
         .task {
             await store.restoreLastReadingIfNeeded()
         }

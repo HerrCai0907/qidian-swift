@@ -36,10 +36,14 @@ public final class QidianReadingSession: @unchecked Sendable {
     public let cache: ChapterCache
 
     private var chapterCache: [Int64: LoadedChapter] = [:]
+    /// 目录只缓存一个进程，切换书籍再切回来时不用重复请求。
+    private var catalogCache: [Int64: BookCatalog] = [:]
     private let lock = NSLock()
 
     /// 同一章的并发请求（阅读 + 自动预缓存）合并成一个任务。
     private var inFlight: [Int64: Task<LoadedChapter, Error>] = [:]
+    /// 同一本书目录的并发请求合并成一个任务。
+    private var catalogInFlight: [Int64: Task<BookCatalog, Error>] = [:]
 
     private struct PrefetchRequest: Sendable {
         let bookId: Int64
@@ -178,11 +182,37 @@ public final class QidianReadingSession: @unchecked Sendable {
         return loaded
     }
 
+    // MARK: - Catalog
+
+    /// 读取某本书的完整目录。默认复用进程内缓存；`forceRefresh` 用于手动刷新。
+    public func catalog(bookId: Int64, forceRefresh: Bool = false) async throws -> BookCatalog {
+        if !forceRefresh, let cached = withLock({ catalogCache[bookId] }) {
+            return cached
+        }
+
+        let task = withLock { () -> Task<BookCatalog, Error> in
+            if !forceRefresh, let existing = catalogInFlight[bookId] {
+                return existing
+            }
+            let task = Task { [self] in
+                defer { withLock { catalogInFlight[bookId] = nil } }
+                return try await client.catalog(bookId: bookId)
+            }
+            catalogInFlight[bookId] = task
+            return task
+        }
+
+        let catalog = try await task.value
+        withLock { catalogCache[bookId] = catalog }
+        return catalog
+    }
+
     /// 清空进程内缓存（磁盘上的 `~/.qidian/<书名>/` 会保留）。
     /// 登录态变化后调用，强制重新向服务端拉取当前章。
     public func clearCache() {
         withLock {
             chapterCache.removeAll()
+            catalogCache.removeAll()
             // 登录态变化后，之前“未购买”的下一章可能已经能读了。
             ignoredPrefetches.removeAll()
         }

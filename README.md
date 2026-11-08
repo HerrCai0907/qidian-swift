@@ -1,8 +1,8 @@
-# QidianReader — Swift 原生起点阅读（登录 + 阅读 + 本地缓存 + 进度恢复）
+# QidianReader — Swift 原生起点阅读（登录 + 目录 + 阅读 + 本地缓存 + 进度恢复）
 
-只做四件事：**登录**、**阅读**、**把下载过的章节留在本地**、**下次打开回到上次读到的地方**。
+只做五件事：**登录**、**看目录**、**阅读**、**把下载过的章节留在本地**、**下次打开回到上次读到的地方**。
 
-把章节链接粘进窗口就能读。正文不会像浏览器那样竖向滚动，而是按窗口大小自动分页，**左右各一页**：
+把章节链接粘进窗口就能读。左上角「功能」→「章节目录…」可以看当前书的完整目录，按卷分组、支持搜索，点任意一章直接开始读。正文不会像浏览器那样竖向滚动，而是按窗口大小自动分页，**左右各一页**：
 
 - 点击左侧：上一页
 - 点击中间或右侧：下一页
@@ -36,7 +36,7 @@ swift run QidianReader
 >
 > 带这个 Flag 启动时，App 不会激活自己、也不会把窗口提到前台：窗口照常创建并可用，但会排在当前前台 App 的窗口后面，不会打断正在使用电脑的人。在 Xcode 里给 QidianReader scheme 的 Launch Arguments 加上 `--no-activate` 效果相同。
 
-窗口左上角「功能」菜单集中了全部操作：打开章节链接、切换书籍、字号、主题、登录。正文区域只显示左右两页，不再保留顶部工具栏和底部状态栏。已登录时菜单里显示“已登录”；登录后会自动重拉当前章（试读 → 全文）。
+窗口左上角「功能」菜单集中了全部操作：打开章节链接、看章节目录、切换书籍、字号、主题、登录。正文区域只显示左右两页，不再保留顶部工具栏和底部状态栏。已登录时菜单里显示“已登录”；登录后会自动重拉当前章（试读 → 全文）。
 
 > 本项目只提供 macOS 图形客户端，不再包含命令行工具。构建/测试命令：
 
@@ -59,6 +59,20 @@ swift test --disable-sandbox
 - 键盘 `←` / `→`：上一页 / 下一页；阅读区获得焦点时生效。
 - 调整窗口大小或字号/行距后会自动重新分页，并尽量停留在当前阅读位置。
 - 页码、翻页提示和下一章提示收在左上角「功能」菜单顶部；正文区域没有页脚。
+
+---
+
+## 章节目录与章节选择
+
+左上角「功能」→「章节目录…」打开当前书的目录：
+
+- 目录一次请求返回整本书，按卷分组；卷可以折叠/展开。
+- 顶部显示卷数、章节数和作者；当前章节会高亮并标「在读」，打开时自动滚到那一章。
+- 搜索框按章节名过滤（例如「冰封」「三百六十」）。
+- 点任意一章会关闭目录并直接载入该章正文。
+- 右上角刷新按钮强制重新拉目录；目录在本次运行内按书缓存，切换书籍再切回来不会重复请求。
+- 目录 sheet 顶部可以在当前书和读过的书之间切换；也可以直接输入书籍 ID / 书籍页链接，读取任意一本书的目录（没有打开过书时同样可用）。
+- 收费章节带锁图标，但能否读全文仍以账号权益为准（未购买时只返回试读片段）。
 
 ---
 
@@ -99,16 +113,17 @@ swift test --disable-sandbox
 
 ---
 
-## 只保留了四个能力
+## 只保留了五个能力
 
 | 能力 | 实现 |
 |---|---|
 | 登录 | `WKWebView` 打开真实登录页，轮询到 `ywkey` 后保存 Cookie |
+| 目录 | `mCategory` 一次取全书目录；功能菜单 sheet 按卷展示、搜索、跳章 |
 | 阅读 | `getMChapterInfo` 取章节 + 正文；密文回退 `WKWebView` 解密；CoreText 分页为左右双页 |
 | 本地缓存 | 完整章节按书名写入 `~/.qidian/<书名>/<chapterId>.json`；读完自动预取下一章，未购买则忽略 |
 | 阅读进度 | 每本书记录章节 + 正文锚点，启动时自动恢复上次页码 |
 
-刻意没做：搜索、书籍详情、目录、手工书架管理、评论、月票、云端阅读进度同步。
+刻意没做：搜索、书籍详情、手工书架管理、评论、月票、云端阅读进度同步。
 
 ---
 
@@ -119,23 +134,24 @@ QidianKit/
 ├── Package.swift
 ├── Sources/
 │   ├── QidianKit/
-│   │   ├── Models.swift               # ChapterData / ChapterInfo / ChapterRef
-│   │   ├── QidianClient.swift         # 章节接口 + Cookie + 403 bootstrap
+│   │   ├── Models.swift               # ChapterData / BookCatalog / CatalogChapter / ChapterRef
+│   │   ├── QidianClient.swift         # 章节 + 目录接口 + Cookie + 403 bootstrap
 │   │   ├── CookieJar.swift            # Cookie 持久化 / CSRF
 │   │   ├── HTMLParser.swift           # 正文 HTML → 段落
 │   │   ├── ChapterCache.swift         # 按书名分目录的章节缓存
 │   │   ├── ReadingHistory.swift       # 阅读进度持久化（每本书一条）
-│   │   ├── QidianReadingSession.swift # 缓存优先 + 自动预取 + 密文回退 WebKit
+│   │   ├── QidianReadingSession.swift # 缓存优先 + 章节/目录缓存 + 自动预取 + 密文回退 WebKit
 │   │   └── WebChapterFetcher.swift    # 离屏 WKWebView + Fock（串行复用）
 │   └── QidianReader/
 │       ├── QidianReaderApp.swift      # 窗口、功能菜单入口、欢迎页
 │       ├── LaunchOptions.swift        # 启动 Flag（--no-activate）
-│       ├── ReaderFunctionMenu.swift   # 一级功能菜单 + 打开章节 sheet
+│       ├── ReaderFunctionMenu.swift   # 一级功能菜单 + 打开章节/目录入口
+│       ├── ChapterCatalogSheet.swift  # 章节目录 sheet：分卷 / 搜索 / 选章
 │       ├── PaginatedReaderView.swift  # 双页分页 + CoreText 排版
-│       ├── ReaderStore.swift          # 阅读状态 / 登录态 / 主题
+│       ├── ReaderStore.swift          # 阅读状态 / 目录状态 / 登录态 / 主题
 │       └── LoginSheet.swift           # 登录 sheet
 ├── Tests/
-│   ├── QidianKitTests/                # 11 个单测
+│   ├── QidianKitTests/                # 15 个单测（目录解析 / 搜索等）
 │   └── QidianReaderTests/             # 启动 Flag 解析测试
 └── docs/
     └── API.md                      # 接口分析
@@ -150,6 +166,8 @@ QidianKit/
   → 读 ~/.qidian/progress.json
        └─ 有记录：自动载入上次章节，并按正文锚点恢复页码
   → 无记录：显示欢迎页，等待从功能菜单打开链接
+  → 功能菜单「章节目录」：GET /webcommon/book/mCategory
+       └─ 按卷展示 → 搜索/选章 → ChapterRef
   → ChapterRef 解析出 bookId / chapterId
   → 查 ~/.qidian/<书名>/<chapterId>.json
        └─ 命中：直接分页渲染，并在后台预取下一章

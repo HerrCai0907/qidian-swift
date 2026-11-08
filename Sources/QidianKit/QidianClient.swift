@@ -3,6 +3,7 @@ import Foundation
 /// 起点移动站（m.qidian.com）的只读客户端，只保留阅读所需的最小接口：
 ///
 /// - `GET /webcommon/chapter/getMChapterInfo?bookId=&chapterId=&_csrfToken=`
+/// - `GET /webcommon/book/mCategory?bookId=&_csrfToken=`（全书目录）
 ///
 /// 已购 VIP 章节的 `content` 是密文，需要 `WebChapterFetcher` 用 WebKit 解密。
 public final class QidianClient: @unchecked Sendable {
@@ -92,6 +93,37 @@ public final class QidianClient: @unchecked Sendable {
             throw QidianError.api(code: envelope.code, message: envelope.msg ?? "getMChapterInfo failed")
         }
         return chapter
+    }
+
+    // MARK: - Catalog
+
+    /// 全书目录（按卷分组）。一次请求返回整本书，适合在功能菜单里做章节选择。
+    public func catalog(bookId: Int64) async throws -> BookCatalog {
+        if jar.csrfToken == nil {
+            try await bootstrap(bookId: bookId)
+        }
+
+        var items: [URLQueryItem] = [URLQueryItem(name: "bookId", value: String(bookId))]
+        if let token = cookies.csrfToken {
+            items.append(URLQueryItem(name: "_csrfToken", value: token))
+        }
+        guard var comps = URLComponents(string: "https://m.qidian.com/webcommon/book/mCategory") else {
+            throw QidianError.parse("bad url")
+        }
+        comps.queryItems = items
+        guard let url = comps.url else { throw QidianError.parse("bad url") }
+
+        let (data, _) = try await request(url: url, bootstrapBookId: bookId)
+        let envelope: APIEnvelope<BookCatalog>
+        do {
+            envelope = try JSONDecoder().decode(APIEnvelope<BookCatalog>.self, from: data)
+        } catch {
+            throw QidianError.parse("目录 JSON 解码失败: \(error)")
+        }
+        guard envelope.isOK, let catalog = envelope.data, !catalog.isEmpty else {
+            throw QidianError.api(code: envelope.code, message: envelope.msg ?? "mCategory failed")
+        }
+        return catalog
     }
 
     /// 把接口返回的 `content` 转成段落；密文时返回 `isEncrypted = true`。
