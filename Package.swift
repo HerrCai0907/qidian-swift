@@ -26,5 +26,10 @@ let package = Package(
             dependencies: ["QidianKit"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        .testTarget(
+            name: "QidianReaderTests",
+            dependencies: ["QidianReader"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
     ]
 )

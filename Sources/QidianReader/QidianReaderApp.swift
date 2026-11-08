@@ -4,10 +4,19 @@ import QidianKit
 
 /// 直接用 `swift run` / 双击可执行文件运行时，进程默认是 `.prohibited` 激活策略：
 /// 窗口会创建，但没有 Dock 图标、不会激活到前台，看起来就像“没打开”。
-/// 这里显式改成普通 App 并抢一次焦点。
+/// 默认启动时这里显式改成普通 App 并抢一次焦点；
+/// 带 `--no-activate` 启动时只改激活策略、不抢焦点、不置顶，窗口留在其他 App 的窗口后面。
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    private let options = LaunchOptions.current
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // `--no-activate`：不激活 App、不把窗口提到最前，
+        // 窗口照常创建并可用，但会排在其他 App 的窗口后面。
+        guard !options.suppressesForeground else { return }
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.async {
             NSApp.windows.first?.makeKeyAndOrderFront(nil)
