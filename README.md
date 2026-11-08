@@ -28,6 +28,14 @@ swift run QidianReader
 # 或 open Package.swift，在 Xcode 里跑 QidianReader scheme
 ```
 
+> 开发/调试时如果不想被 App 抢焦点，加 `--no-activate`：
+>
+> ```bash
+> swift run QidianReader --no-activate
+> ```
+>
+> 带这个 Flag 启动时，App 不会激活自己、也不会把窗口提到前台：窗口照常创建并可用，但会排在当前前台 App 的窗口后面，不会打断正在使用电脑的人。在 Xcode 里给 QidianReader scheme 的 Launch Arguments 加上 `--no-activate` 效果相同。
+
 窗口左上角「功能」菜单集中了全部操作：打开章节链接、切换书籍、字号、主题、登录。正文区域只显示左右两页，不再保留顶部工具栏和底部状态栏。已登录时菜单里显示“已登录”；登录后会自动重拉当前章（试读 → 全文）。
 
 > 本项目只提供 macOS 图形客户端，不再包含命令行工具。构建/测试命令：
@@ -121,11 +129,14 @@ QidianKit/
 │   │   └── WebChapterFetcher.swift    # 离屏 WKWebView + Fock（串行复用）
 │   └── QidianReader/
 │       ├── QidianReaderApp.swift      # 窗口、功能菜单入口、欢迎页
+│       ├── LaunchOptions.swift        # 启动 Flag（--no-activate）
 │       ├── ReaderFunctionMenu.swift   # 一级功能菜单 + 打开章节 sheet
 │       ├── PaginatedReaderView.swift  # 双页分页 + CoreText 排版
 │       ├── ReaderStore.swift          # 阅读状态 / 登录态 / 主题
 │       └── LoginSheet.swift           # 登录 sheet
-├── Tests/QidianKitTests/              # 11 个单测
+├── Tests/
+│   ├── QidianKitTests/                # 11 个单测
+│   └── QidianReaderTests/             # 启动 Flag 解析测试
 └── docs/
     └── API.md                      # 接口分析
 ```
