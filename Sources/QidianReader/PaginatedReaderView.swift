@@ -248,6 +248,7 @@ struct PagedReaderView: View {
     private func paginationKey(textSize: CGSize) -> PaginationKey {
         PaginationKey(chapterId: chapter.chapterId,
                       contentFingerprint: contentFingerprint,
+                      restoreGeneration: store.restoreGeneration,
                       fontSize: store.fontSize,
                       lineSpacing: store.lineSpacing,
                       theme: store.theme.rawValue,
@@ -261,9 +262,8 @@ struct PagedReaderView: View {
         let fingerprint = contentFingerprint
         let contentChanged = chapter.chapterId != lastChapterId || fingerprint != lastFingerprint
         let previousAnchor = anchor
-        let resumeAnchor = contentChanged
-            ? store.consumeRestoreAnchor(bookId: chapter.bookId, chapterId: chapter.chapterId)
-            : nil
+        let resumeAnchor = store.consumeRestoreAnchor(bookId: chapter.bookId,
+                                                      chapterId: chapter.chapterId)
 
         let result = ChapterPaginator.build(chapter: chapter,
                                             fontSize: store.fontSize,
@@ -273,22 +273,24 @@ struct PagedReaderView: View {
         pagination = result
         let ranges = result.ranges
 
-        if contentChanged {
-            if let resumeAnchor, !ranges.isEmpty {
-                let maxOffset = max(0, result.attributed.length - 1)
-                let target = max(0, min(maxOffset, result.bodyStart + resumeAnchor))
-                let index = ranges.firstIndex { target < $0.location + $0.length } ?? 0
-                spreadIndex = index / 2
-            } else if landing == .end {
+        if let resumeAnchor, !ranges.isEmpty {
+            let maxOffset = max(0, result.attributed.length - 1)
+            let target = max(0, min(maxOffset, result.bodyStart + resumeAnchor))
+            let index = ranges.firstIndex { target < $0.location + $0.length } ?? 0
+            spreadIndex = index / 2
+        } else if contentChanged {
+            if landing == .end {
                 spreadIndex = max(0, (ranges.count - 1) / 2)
             } else {
                 spreadIndex = 0
             }
-            landing = .start
         } else {
             let index = ranges.firstIndex { previousAnchor < $0.location + $0.length }
                 ?? max(0, ranges.count - 1)
             spreadIndex = index / 2
+        }
+        if contentChanged || resumeAnchor != nil {
+            landing = .start
         }
 
         if ranges.isEmpty {
@@ -298,8 +300,8 @@ struct PagedReaderView: View {
         }
         lastChapterId = chapter.chapterId
         lastFingerprint = fingerprint
-        // 只在换章/内容变化时记录；窗口缩放、主题切换不重复写盘。
-        if contentChanged {
+        // 只在换章/内容变化/主动跳到历史位置时记录；窗口缩放、主题切换不重复写盘。
+        if contentChanged || resumeAnchor != nil {
             recordProgress()
         }
     }
@@ -358,6 +360,7 @@ private final class MousePageTurnNSView: NSView {
 private struct PaginationKey: Hashable {
     let chapterId: Int64
     let contentFingerprint: Int
+    let restoreGeneration: Int
     let fontSize: Double
     let lineSpacing: Double
     let theme: String

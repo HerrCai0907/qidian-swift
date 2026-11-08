@@ -15,6 +15,10 @@ final class ReaderStore {
     private(set) var phase: Phase = .idle
     private(set) var isLoggedIn = false
     private(set) var chapter: LoadedChapter?
+    /// 之前读过的书，按最近阅读排序（每本书一条）。
+    private(set) var recentBooks: [ReadingHistoryEntry] = []
+    /// 每次主动“跳到某个历史位置”时自增，用于让分页视图重新应用锚点。
+    private(set) var restoreGeneration = 0
 
     /// 用户粘贴的章节链接 / `bookId chapterId`。
     var input = ""
@@ -36,6 +40,7 @@ final class ReaderStore {
         } else {
             session = QidianReadingSession(cookies: CookieJar(), cookieFile: CookieJar.defaultURL)
         }
+        recentBooks = history.entries
     }
 
     // MARK: - Login
@@ -88,6 +93,17 @@ final class ReaderStore {
         await load(bookId: ref.bookId, chapterId: ref.chapterId)
     }
 
+    /// 切换之前读过的书：载入该书上次读到的章节，并回到当时的页码。
+    func openHistoryEntry(_ entry: ReadingHistoryEntry) async {
+        pendingRestore = entry
+        restoreGeneration &+= 1
+        let token = restoreGeneration
+        if await load(bookId: entry.bookId, chapterId: entry.chapterId) == false,
+           token == restoreGeneration {
+            pendingRestore = nil
+        }
+    }
+
     @discardableResult
     func openAdjacent(_ id: Int64?) async -> Bool {
         guard let id, let current = chapter else { return false }
@@ -101,7 +117,7 @@ final class ReaderStore {
         await load(bookId: current.bookId, chapterId: current.chapterId)
     }
 
-    /// 分页视图完成排版后取走“启动恢复”的位置，只消费一次。
+    /// 分页视图完成排版后取走待恢复的位置（启动恢复或切换书籍），只消费一次。
     func consumeRestoreAnchor(bookId: Int64, chapterId: Int64) -> Int? {
         guard let pendingRestore,
               pendingRestore.bookId == bookId,
@@ -112,11 +128,14 @@ final class ReaderStore {
 
     /// `anchor` 相对正文起点，由 `PagedReaderView` 在翻页/重新分页后上报。
     func recordProgress(chapter: LoadedChapter, anchor: Int) {
-        history.record(bookId: chapter.bookId,
-                       chapterId: chapter.chapterId,
-                       bookName: chapter.bookName,
-                       chapterTitle: chapter.title,
-                       anchor: anchor)
+        let changed = history.record(bookId: chapter.bookId,
+                                     chapterId: chapter.chapterId,
+                                     bookName: chapter.bookName,
+                                     chapterTitle: chapter.title,
+                                     anchor: anchor)
+        if changed {
+            recentBooks = history.entries
+        }
     }
 
     @discardableResult
