@@ -1,0 +1,21 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+
+# 本地浏览器/调试产物
+.chrome/
+*.log
+
+# 崩溃日志
+*.ips
+
+# 登录凭证（等同密码，绝对不要提交）
+cookies.json
+**/cookies.json
+.qidian/
