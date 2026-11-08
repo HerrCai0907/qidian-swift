@@ -9,17 +9,11 @@ let package = Package(
     ],
     products: [
         .library(name: "QidianKit", targets: ["QidianKit"]),
-        .executable(name: "qidian", targets: ["qidian"]),
         .executable(name: "QidianReader", targets: ["QidianReader"]),
     ],
     targets: [
         .target(
             name: "QidianKit",
-            swiftSettings: [.swiftLanguageMode(.v5)]
-        ),
-        .executableTarget(
-            name: "qidian",
-            dependencies: ["QidianKit"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(

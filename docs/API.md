@@ -380,7 +380,7 @@ unicode-range: U+3400-4DB5;
 | 本地缓存 | `ChapterCache` | 完整章节按书名写入 `~/.qidian/<书名>/<chapterId>.json` |
 | 付费解密 | `WebChapterFetcher` | 离屏 WKWebView + Fock（全局串行） |
 | 编排 | `QidianReadingSession` | 缓存优先，密文回退 WebKit；读完自动预取下一章 |
-| 登录 | `QidianLoginWindowController` | 真实登录页 + 自动抓 Cookie |
+| 登录 | `QidianReader.LoginSheet` | GUI 内 WKWebView 登录页 + 自动抓 Cookie |
 
 自动预取只向后看一章：当前章拿到 `next` 后再请求一次；若返回 `isBuy == 0` 的试读片段，则按约定忽略，不写缓存、也不继续往后爬。因此不会对目录或整书产生批量请求。
 

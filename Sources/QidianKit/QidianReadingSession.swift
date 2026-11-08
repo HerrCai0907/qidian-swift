@@ -26,16 +26,6 @@ public struct LoadedChapter: Sendable, Identifiable {
     public var text: String { paragraphs.joined(separator: "\n") }
 }
 
-/// 自动预缓存下一章的结果。
-public enum ChapterPrefetchOutcome: Sendable, Equatable {
-    /// 完整章节已写入本地缓存。
-    case cached
-    /// 下一章未购买（或未登录只能试读），按约定忽略。
-    case ignoredNotPurchased
-    /// 网络/解析等其它失败，不影响当前章阅读。
-    case failed(String)
-}
-
 /// 组合 API + WebKit 兜底 + 本地缓存的一站式阅读会话。
 ///
 /// 每成功下载一个完整章节，都会写入 `~/.qidian/<书名>/<chapterId>.json`；
@@ -61,7 +51,6 @@ public final class QidianReadingSession: @unchecked Sendable {
     private var prefetchTask: Task<Void, Never>?
     private var activePrefetchChapterId: Int64?
     private var ignoredPrefetches: Set<Int64> = []
-    private var prefetchOutcomes: [Int64: ChapterPrefetchOutcome] = [:]
 
     /// VIP 密文是否允许回退到离屏 WebKit 解密。
     public var allowsWebDecryption = true
@@ -251,61 +240,26 @@ public final class QidianReadingSession: @unchecked Sendable {
             }
             guard let request else { return }
 
-            let outcome: ChapterPrefetchOutcome
             do {
                 let chapter = try await chapter(bookId: request.bookId,
                                                 chapterId: request.chapterId,
                                                 prefetchNext: false)
                 if chapter.isPreview {
-                    outcome = .ignoredNotPurchased
-                } else if cache.isCached(bookId: request.bookId, chapterId: request.chapterId) {
-                    outcome = .cached
-                } else {
-                    outcome = .failed("写入本地缓存失败")
+                    markPrefetchIgnored(request.chapterId)
                 }
             } catch {
+                // 未购买/试读：按约定忽略，之后不再反复请求。
                 if let qidianError = error as? QidianError,
                    case .notPurchased = qidianError {
-                    outcome = .ignoredNotPurchased
-                } else {
-                    outcome = .failed(error.localizedDescription)
+                    markPrefetchIgnored(request.chapterId)
                 }
-            }
-
-            withLock {
-                prefetchOutcomes[request.chapterId] = outcome
-                if outcome == .ignoredNotPurchased {
-                    // 未购买/试读：按约定忽略，之后不再反复请求。
-                    ignoredPrefetches.insert(request.chapterId)
-                }
+                // 网络/解析等失败只影响这次后台预取，不打扰当前阅读。
             }
         }
     }
 
-    /// 等待后台预取结束。CLI 在退出前调用，确保缓存已经落盘；GUI 不需要。
-    public func waitForPrefetch() async {
-        while true {
-            let state: (Task<Void, Never>?, PrefetchRequest?) = withLock {
-                (prefetchTask, pendingPrefetch)
-            }
-
-            if let task = state.0 {
-                await task.value
-                continue
-            }
-            if state.1 == nil { return }
-            await Task.yield()
-        }
-    }
-
-    /// 查询某一章的自动预取结果（没有预取过则为 nil）。
-    public func prefetchOutcome(chapterId: Int64) -> ChapterPrefetchOutcome? {
-        withLock { prefetchOutcomes[chapterId] }
-    }
-
-    /// 缓存文件路径，便于 CLI 提示用户。
-    public func cachedFileURL(bookId: Int64, chapterId: Int64) -> URL? {
-        cache.fileURL(bookId: bookId, chapterId: chapterId)
+    private func markPrefetchIgnored(_ chapterId: Int64) {
+        withLock { ignoredPrefetches.insert(chapterId) }
     }
 
     /// `NSLock` 不能在 async 函数里直接 lock/unlock（Swift 6 会报错），

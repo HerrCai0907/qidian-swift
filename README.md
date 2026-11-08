@@ -10,44 +10,7 @@
 
 ---
 
-## 快速开始
-
-```bash
-swift build          # 本机沙箱环境用 --disable-sandbox
-```
-
-### 登录
-
-```bash
-.build/debug/qidian login
-```
-
-弹出起点登录页，登录成功后自动把 Cookie 存到 `~/.qidian/cookies.json`。
-
-### 阅读
-
-```bash
-# 直接粘链接
-.build/debug/qidian read https://www.qidian.com/chapter/1037095853/801714441/
-
-# 或者 bookId + chapterId
-.build/debug/qidian read 1037095853 801714441
-
-# 免费章节不登录也能读
-.build/debug/qidian read 1037095853 753919666
-
-# 关闭“自动缓存下一章”（例如只想读单章、不想多请求一次）
-.build/debug/qidian read 1037095853 801714441 --no-prefetch
-```
-
-CLI 会在退出前等待后台预取完成，并提示：
-
-```
-ℹ️ 已自动缓存下一章：/Users/you/.qidian/牧者密续/801810226.json
-ℹ️ 下一章未购买，已忽略自动缓存。
-```
-
-### 图形客户端
+## 运行
 
 ```bash
 swift run QidianReader
@@ -55,6 +18,13 @@ swift run QidianReader
 ```
 
 窗口顶部粘贴章节链接 → 点“阅读”。未登录时右上角有“登录”按钮；登录后会自动重拉当前章（试读 → 全文）。
+
+> 本项目只提供 macOS 图形客户端，不再包含命令行工具。构建/测试命令：
+
+```bash
+swift build --disable-sandbox
+swift test --disable-sandbox
+```
 
 > 如果窗口没有出现在前台：先 `killall QidianReader`，再重新运行。应用启动时会把自己的激活策略设为普通 App 并主动抢焦点；早期构建没有这一步，窗口会创建但藏在后台。
 
@@ -110,10 +80,8 @@ QidianKit/
 │   │   ├── HTMLParser.swift           # 正文 HTML → 段落
 │   │   ├── ChapterCache.swift         # 按书名分目录的章节缓存
 │   │   ├── QidianReadingSession.swift # 缓存优先 + 自动预取 + 密文回退 WebKit
-│   │   ├── WebChapterFetcher.swift    # 离屏 WKWebView + Fock（串行复用）
-│   │   └── LoginWindow.swift          # 登录窗口
-│   ├── qidian/                        # CLI：login / read
-│   └── QidianReader/                  # SwiftUI macOS 客户端
+│   │   └── WebChapterFetcher.swift    # 离屏 WKWebView + Fock（串行复用）
+│   └── QidianReader/                  # SwiftUI macOS 客户端（含登录 sheet）
 ├── Tests/QidianKitTests/              # 9 个单测
 └── docs/
     └── API.md                      # 接口分析
