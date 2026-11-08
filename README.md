@@ -28,7 +28,7 @@ swift run QidianReader
 # 或 open Package.swift，在 Xcode 里跑 QidianReader scheme
 ```
 
-窗口顶部粘贴章节链接 → 点“阅读”。左上角“书库”按钮 → “切换书籍”可在读过的书之间切换，并回到该书上次读到的页码；当前书带 ✓。未登录时右上角有“登录”按钮；登录后会自动重拉当前章（试读 → 全文）。
+窗口左上角「功能」菜单集中了全部操作：打开章节链接、切换书籍、字号、主题、登录。正文区域只显示左右两页，不再保留顶部工具栏和底部状态栏。已登录时菜单里显示“已登录”；登录后会自动重拉当前章（试读 → 全文）。
 
 > 本项目只提供 macOS 图形客户端，不再包含命令行工具。构建/测试命令：
 
@@ -50,7 +50,7 @@ swift test --disable-sandbox
 - 鼠标右键：任意位置上一页。
 - 键盘 `←` / `→`：上一页 / 下一页；阅读区获得焦点时生效。
 - 调整窗口大小或字号/行距后会自动重新分页，并尽量停留在当前阅读位置。
-- 页脚显示书名、当前页码和“下一页”提示；最后一页会提示下一章标题。
+- 页码、翻页提示和下一章提示收在左上角「功能」菜单顶部；正文区域没有页脚。
 
 ---
 
@@ -59,7 +59,7 @@ swift test --disable-sandbox
 - 每本书保留最近一次阅读位置，记录在 `~/.qidian/progress.json`。
 - 翻页、切换章节、调整窗口大小或字号/行距后都会更新进度。
 - 启动时自动载入最近一本书的章节，并按正文锚点恢复到对应页码。
-- 左上角“书库”→“切换书籍”列出所有读过的书（按最近阅读排序）；选中后载入该书上次读到的章节，并恢复到当时的页码。
+- 左上角「功能」→「切换书籍」列出所有读过的书（按最近阅读排序）；选中后载入该书上次读到的章节，并恢复到当时的页码。
 - 同一本书只保留最新一条，最多保留 50 本书。
 - 默认跟随 `QIDIAN_CACHE` 的根目录；也可用 `QIDIAN_PROGRESS` 单独指定进度文件。
 
@@ -120,7 +120,8 @@ QidianKit/
 │   │   ├── QidianReadingSession.swift # 缓存优先 + 自动预取 + 密文回退 WebKit
 │   │   └── WebChapterFetcher.swift    # 离屏 WKWebView + Fock（串行复用）
 │   └── QidianReader/
-│       ├── QidianReaderApp.swift      # 窗口、顶部栏、欢迎页
+│       ├── QidianReaderApp.swift      # 窗口、功能菜单入口、欢迎页
+│       ├── ReaderFunctionMenu.swift   # 一级功能菜单 + 打开章节 sheet
 │       ├── PaginatedReaderView.swift  # 双页分页 + CoreText 排版
 │       ├── ReaderStore.swift          # 阅读状态 / 登录态 / 主题
 │       └── LoginSheet.swift           # 登录 sheet
@@ -137,7 +138,7 @@ QidianKit/
 启动
   → 读 ~/.qidian/progress.json
        └─ 有记录：自动载入上次章节，并按正文锚点恢复页码
-  → 无记录：显示欢迎页，等待粘贴链接
+  → 无记录：显示欢迎页，等待从功能菜单打开链接
   → ChapterRef 解析出 bookId / chapterId
   → 查 ~/.qidian/<书名>/<chapterId>.json
        └─ 命中：直接分页渲染，并在后台预取下一章
