@@ -17,6 +17,7 @@ struct PagedReaderView: View {
     @State private var lastChapterId: Int64 = 0
     @State private var lastFingerprint = 0
     @State private var landing: Landing = .start
+    @FocusState private var isFocused: Bool
 
     private enum Landing {
         case start
@@ -52,7 +53,23 @@ struct PagedReaderView: View {
                              textSize: metrics.textSize,
                              cardSize: metrics.cardSize)
                 }
-                .overlay { clickZones }
+                .overlay {
+                    MousePageTurnOverlay(
+                        onLeftClick: { fraction in
+                            isFocused = true
+                            if fraction < 1.0 / 3.0 {
+                                goPrevious()
+                            } else {
+                                goNext()
+                            }
+                        },
+                        onRightClick: {
+                            isFocused = true
+                            goPrevious()
+                        }
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
 
                 footer
             }
@@ -60,6 +77,21 @@ struct PagedReaderView: View {
             .padding(.vertical, Layout.verticalPadding)
             .onChange(of: key, initial: true) { _, _ in
                 repaginate(textSize: metrics.textSize)
+            }
+            .focusable()
+            .focused($isFocused)
+            .focusEffectDisabled()
+            .onKeyPress(.leftArrow) {
+                goPrevious()
+                return .handled
+            }
+            .onKeyPress(.rightArrow) {
+                goNext()
+                return .handled
+            }
+            .onAppear { isFocused = true }
+            .onChange(of: chapter.chapterId) { _, _ in
+                isFocused = true
             }
         }
     }
@@ -108,30 +140,6 @@ struct PagedReaderView: View {
         }
     }
 
-    // MARK: - Click zones
-
-    private var clickZones: some View {
-        GeometryReader { proxy in
-            HStack(spacing: 0) {
-                clickZone(label: "上一页", action: goPrevious)
-                    .frame(width: proxy.size.width / 3)
-                clickZone(label: "下一页", action: goNext)
-                    .frame(width: proxy.size.width / 3)
-                clickZone(label: "下一页", action: goNext)
-                    .frame(width: proxy.size.width / 3)
-            }
-        }
-    }
-
-    private func clickZone(label: String, action: @escaping () -> Void) -> some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .onTapGesture(perform: action)
-            .accessibilityElement()
-            .accessibilityLabel(label)
-            .accessibilityAddTraits(.isButton)
-    }
-
     // MARK: - Footer
 
     private var footer: some View {
@@ -160,13 +168,13 @@ struct PagedReaderView: View {
         guard let pagination, !pagination.ranges.isEmpty else { return "" }
         let lastSpread = max(0, (pagination.ranges.count - 1) / 2)
         guard spreadIndex >= lastSpread else {
-            return "左侧上一页 · 中间/右侧下一页"
+            return "←/右键上一页 · →/点击下一页"
         }
         if let nextName = chapter.nextName, !nextName.isEmpty {
-            return "再点下一页：\(nextName)"
+            return "再点下一页或按 →：\(nextName)"
         }
         if let nextId = chapter.nextId, nextId > 0 {
-            return "再点下一页进入下一章"
+            return "再点下一页或按 → 进入下一章"
         }
         return "本章完"
     }
@@ -280,6 +288,46 @@ struct PagedReaderView: View {
         }
         lastChapterId = chapter.chapterId
         lastFingerprint = fingerprint
+    }
+}
+
+// MARK: - Mouse page turning
+
+/// 用 AppKit 原生鼠标事件处理左右键，避免 SwiftUI 的透明手势区接不到右键。
+private struct MousePageTurnOverlay: NSViewRepresentable {
+    let onLeftClick: (CGFloat) -> Void
+    let onRightClick: () -> Void
+
+    func makeNSView(context: Context) -> MousePageTurnNSView {
+        let view = MousePageTurnNSView()
+        view.onLeftClick = onLeftClick
+        view.onRightClick = onRightClick
+        return view
+    }
+
+    func updateNSView(_ view: MousePageTurnNSView, context: Context) {
+        view.onLeftClick = onLeftClick
+        view.onRightClick = onRightClick
+    }
+}
+
+private final class MousePageTurnNSView: NSView {
+    var onLeftClick: ((CGFloat) -> Void)?
+    var onRightClick: (() -> Void)?
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { self }
+
+    override func mouseUp(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let fraction = bounds.width > 0
+            ? min(max(point.x / bounds.width, 0), 1)
+            : 0.5
+        onLeftClick?(fraction)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        onRightClick?()
     }
 }
 
