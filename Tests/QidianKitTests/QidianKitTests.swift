@@ -117,11 +117,70 @@ final class QidianKitTests: XCTestCase {
         XCTAssertNil(cache.load(bookId: 1, chapterId: 20))
     }
 
+    // MARK: - Reading history
+
+    func testReadingHistoryPersistsLatestPerBook() throws {
+        let url = temporaryHistoryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let store = ReadingHistoryStore(url: url)
+        let base = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(store.record(bookId: 1, chapterId: 10, bookName: "书一",
+                                   chapterTitle: "第一章", anchor: -80, at: base))
+        XCTAssertTrue(store.record(bookId: 2, chapterId: 20, bookName: "书二",
+                                   chapterTitle: "第二章", anchor: 200,
+                                   at: base.addingTimeInterval(10)))
+        XCTAssertTrue(store.record(bookId: 1, chapterId: 11, bookName: "书一",
+                                   chapterTitle: "第二章", anchor: 300,
+                                   at: base.addingTimeInterval(20)))
+
+        XCTAssertEqual(store.entries.count, 2)
+        XCTAssertEqual(store.lastEntry?.bookId, 1)
+        XCTAssertEqual(store.lastEntry?.chapterId, 11)
+        XCTAssertEqual(store.entry(forBookId: 1)?.anchor, 300)
+
+        let reloaded = ReadingHistoryStore(url: url)
+        XCTAssertEqual(reloaded.entries.count, 2)
+        XCTAssertEqual(reloaded.lastEntry?.chapterId, 11)
+        XCTAssertEqual(reloaded.entry(forBookId: 2)?.chapterId, 20)
+    }
+
+    func testReadingHistorySkipsSamePositionAndMovesBookToFront() throws {
+        let url = temporaryHistoryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let store = ReadingHistoryStore(url: url)
+        let base = Date(timeIntervalSince1970: 2_000)
+        XCTAssertTrue(store.record(bookId: 1, chapterId: 10, bookName: "书一",
+                                   chapterTitle: "第一章", anchor: 10, at: base))
+        XCTAssertFalse(store.record(bookId: 1, chapterId: 10, bookName: "书一",
+                                    chapterTitle: "第一章", anchor: 10,
+                                    at: base.addingTimeInterval(10)))
+
+        XCTAssertTrue(store.record(bookId: 2, chapterId: 20, bookName: "书二",
+                                   chapterTitle: "第二章", anchor: 20,
+                                   at: base.addingTimeInterval(20)))
+        XCTAssertTrue(store.record(bookId: 1, chapterId: 11, bookName: "书一",
+                                   chapterTitle: "第二章", anchor: 50,
+                                   at: base.addingTimeInterval(30)))
+
+        XCTAssertEqual(store.entries.count, 2)
+        XCTAssertEqual(store.lastEntry?.bookId, 1)
+        XCTAssertEqual(store.lastEntry?.chapterId, 11)
+        XCTAssertEqual(store.entry(forBookId: 1)?.anchor, 50)
+    }
+
     // MARK: - Helpers
 
     private func temporaryCacheRoot() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("qidian-cache-test-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    private func temporaryHistoryURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("qidian-history-test-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent(ReadingHistoryStore.fileName)
     }
 
     private func makeChapter(bookId: Int64 = 1037095853,

@@ -61,6 +61,9 @@ struct RootView: View {
         }
         .background(store.theme.background)
         .navigationTitle(store.chapter?.title ?? "QidianReader")
+        .task {
+            await store.restoreLastReadingIfNeeded()
+        }
     }
 }
 

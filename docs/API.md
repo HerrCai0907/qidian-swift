@@ -369,7 +369,7 @@ unicode-range: U+3400-4DB5;
 
 ---
 
-## 7. 映射到 Swift（登录 + 阅读 + 缓存）
+## 7. 映射到 Swift（登录 + 阅读 + 缓存 + 进度）
 
 | 能力 | Swift 类型 | 实现 |
 |---|---|---|
@@ -378,6 +378,7 @@ unicode-range: U+3400-4DB5;
 | 链接解析 | `ChapterRef` | 支持 PC/移动站 URL 与 `bookId chapterId` |
 | 会话 | `CookieJar` | `~/.qidian/cookies.json` |
 | 本地缓存 | `ChapterCache` | 完整章节按书名写入 `~/.qidian/<书名>/<chapterId>.json` |
+| 阅读进度 | `ReadingHistoryStore` | 每本书一条，写入 `~/.qidian/progress.json`；启动时恢复章节和正文锚点 |
 | 付费解密 | `WebChapterFetcher` | 离屏 WKWebView + Fock（全局串行） |
 | 编排 | `QidianReadingSession` | 缓存优先，密文回退 WebKit；读完自动预取下一章 |
 | 登录 | `QidianReader.LoginSheet` | GUI 内 WKWebView 登录页 + 自动抓 Cookie |

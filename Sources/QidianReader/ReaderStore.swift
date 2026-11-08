@@ -24,6 +24,10 @@ final class ReaderStore {
     var isPresentingLogin = false
 
     private var session: QidianReadingSession
+    private let history = ReadingHistoryStore()
+    private var pendingRestore: ReadingHistoryEntry?
+    private var didAttemptRestore = false
+    private var loadGeneration = 0
 
     init() {
         if let jar = try? CookieJar.load(from: CookieJar.defaultURL) {
@@ -62,35 +66,73 @@ final class ReaderStore {
 
     // MARK: - Reading
 
+    /// 启动时恢复上次读到的章节和位置。
+    func restoreLastReadingIfNeeded() async {
+        guard !didAttemptRestore else { return }
+        didAttemptRestore = true
+        guard chapter == nil, let entry = history.lastEntry else { return }
+
+        pendingRestore = entry
+        let ok = await load(bookId: entry.bookId, chapterId: entry.chapterId)
+        if !ok {
+            pendingRestore = nil
+        }
+    }
+
     func openInput() async {
         guard let ref = ChapterRef(input) else {
             phase = .failed("链接格式不对，示例：https://www.qidian.com/chapter/1037095853/801714441/")
             return
         }
+        pendingRestore = nil
         await load(bookId: ref.bookId, chapterId: ref.chapterId)
     }
 
     @discardableResult
     func openAdjacent(_ id: Int64?) async -> Bool {
         guard let id, let current = chapter else { return false }
+        pendingRestore = nil
         return await load(bookId: current.bookId, chapterId: id)
     }
 
     func retry() async {
         guard let current = chapter else { return }
+        pendingRestore = nil
         await load(bookId: current.bookId, chapterId: current.chapterId)
+    }
+
+    /// 分页视图完成排版后取走“启动恢复”的位置，只消费一次。
+    func consumeRestoreAnchor(bookId: Int64, chapterId: Int64) -> Int? {
+        guard let pendingRestore,
+              pendingRestore.bookId == bookId,
+              pendingRestore.chapterId == chapterId else { return nil }
+        self.pendingRestore = nil
+        return pendingRestore.anchor
+    }
+
+    /// `anchor` 相对正文起点，由 `PagedReaderView` 在翻页/重新分页后上报。
+    func recordProgress(chapter: LoadedChapter, anchor: Int) {
+        history.record(bookId: chapter.bookId,
+                       chapterId: chapter.chapterId,
+                       bookName: chapter.bookName,
+                       chapterTitle: chapter.title,
+                       anchor: anchor)
     }
 
     @discardableResult
     private func load(bookId: Int64, chapterId: Int64) async -> Bool {
+        loadGeneration &+= 1
+        let generation = loadGeneration
         phase = .loading("加载正文…")
         do {
             let loaded = try await session.chapter(bookId: bookId, chapterId: chapterId)
+            guard generation == loadGeneration else { return false }
             chapter = loaded
             input = "https://www.qidian.com/chapter/\(bookId)/\(chapterId)/"
             phase = .idle
             return true
         } catch {
+            guard generation == loadGeneration else { return false }
             phase = .failed(error.localizedDescription)
             return false
         }

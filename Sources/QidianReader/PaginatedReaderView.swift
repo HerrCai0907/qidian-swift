@@ -198,6 +198,7 @@ struct PagedReaderView: View {
         if spreadIndex < lastSpread {
             spreadIndex += 1
             anchor = pagination.ranges[spreadIndex * 2].location
+            recordProgress()
             return
         }
 
@@ -212,6 +213,7 @@ struct PagedReaderView: View {
         if spreadIndex > 0 {
             spreadIndex -= 1
             anchor = pagination.ranges[spreadIndex * 2].location
+            recordProgress()
             return
         }
 
@@ -259,6 +261,9 @@ struct PagedReaderView: View {
         let fingerprint = contentFingerprint
         let contentChanged = chapter.chapterId != lastChapterId || fingerprint != lastFingerprint
         let previousAnchor = anchor
+        let resumeAnchor = contentChanged
+            ? store.consumeRestoreAnchor(bookId: chapter.bookId, chapterId: chapter.chapterId)
+            : nil
 
         let result = ChapterPaginator.build(chapter: chapter,
                                             fontSize: store.fontSize,
@@ -269,7 +274,12 @@ struct PagedReaderView: View {
         let ranges = result.ranges
 
         if contentChanged {
-            if landing == .end {
+            if let resumeAnchor, !ranges.isEmpty {
+                let maxOffset = max(0, result.attributed.length - 1)
+                let target = max(0, min(maxOffset, result.bodyStart + resumeAnchor))
+                let index = ranges.firstIndex { target < $0.location + $0.length } ?? 0
+                spreadIndex = index / 2
+            } else if landing == .end {
                 spreadIndex = max(0, (ranges.count - 1) / 2)
             } else {
                 spreadIndex = 0
@@ -288,6 +298,18 @@ struct PagedReaderView: View {
         }
         lastChapterId = chapter.chapterId
         lastFingerprint = fingerprint
+        // 只在换章/内容变化时记录；窗口缩放、主题切换不重复写盘。
+        if contentChanged {
+            recordProgress()
+        }
+    }
+
+    /// 当前左页起点相对正文起点的偏移，写入历史记录。
+    private func recordProgress() {
+        guard let pagination, !pagination.ranges.isEmpty else { return }
+        let index = min(spreadIndex * 2, pagination.ranges.count - 1)
+        let pageStart = pagination.ranges[index].location
+        store.recordProgress(chapter: chapter, anchor: pageStart - pagination.bodyStart)
     }
 }
 
@@ -346,6 +368,8 @@ private struct PaginationKey: Hashable {
 private struct ChapterPagination {
     let attributed: NSAttributedString
     let ranges: [NSRange]
+    /// 正文第一段在 attributed 中的起点，用于把历史进度锚点换算成排版位置。
+    let bodyStart: Int
 }
 
 // MARK: - CoreText paginator
@@ -356,18 +380,19 @@ private enum ChapterPaginator {
                       lineSpacing: Double,
                       theme: ReaderTheme,
                       pageSize: CGSize) -> ChapterPagination {
-        let attributed = makeAttributedString(chapter: chapter,
-                                              fontSize: fontSize,
-                                              lineSpacing: lineSpacing,
-                                              theme: theme)
+        let (attributed, bodyStart) = makeAttributedString(chapter: chapter,
+                                                           fontSize: fontSize,
+                                                           lineSpacing: lineSpacing,
+                                                           theme: theme)
         return ChapterPagination(attributed: attributed,
-                                 ranges: paginate(attributed, pageSize: pageSize))
+                                 ranges: paginate(attributed, pageSize: pageSize),
+                                 bodyStart: bodyStart)
     }
 
     private static func makeAttributedString(chapter: LoadedChapter,
                                              fontSize: Double,
                                              lineSpacing: Double,
-                                             theme: ReaderTheme) -> NSAttributedString {
+                                             theme: ReaderTheme) -> (NSAttributedString, Int) {
         let bodySize = max(10, CGFloat(fontSize))
         let extraLineSpacing = max(0, CGFloat(lineSpacing))
         let foreground = NSColor(theme.foreground)
@@ -411,6 +436,8 @@ private enum ChapterPaginator {
             ))
         }
 
+        let bodyStart = output.length
+
         for paragraph in chapter.paragraphs {
             output.append(NSAttributedString(
                 string: "　　\(paragraph)\n",
@@ -429,7 +456,7 @@ private enum ChapterPaginator {
             ))
         }
 
-        return output
+        return (output, bodyStart)
     }
 
     private static func paginate(_ attributed: NSAttributedString,
