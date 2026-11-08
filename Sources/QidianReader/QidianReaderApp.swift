@@ -75,6 +75,27 @@ struct ReaderTopBar: View {
     var body: some View {
         @Bindable var store = store
         HStack(spacing: 10) {
+            Menu {
+                Menu("切换书籍") {
+                    if store.recentBooks.isEmpty {
+                        Button("还没有读过的书") {}
+                            .disabled(true)
+                    } else {
+                        ForEach(store.recentBooks) { entry in
+                            Button(bookMenuLabel(entry)) {
+                                Task { await store.openHistoryEntry(entry) }
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label("书库", systemImage: "books.vertical")
+            }
+            .menuStyle(.button)
+            .buttonStyle(.bordered)
+            .fixedSize()
+            .help("书库：切换之前读过的书")
+
             TextField("粘贴章节链接，例如 https://www.qidian.com/chapter/1037095853/801714441/",
                       text: $store.input)
                 .textFieldStyle(.roundedBorder)
@@ -118,6 +139,14 @@ struct ReaderTopBar: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(.bar)
+    }
+
+    /// 菜单项文案：当前书打勾，并带上该书上次读到的章节名。
+    private func bookMenuLabel(_ entry: ReadingHistoryEntry) -> String {
+        let name = entry.bookName.isEmpty ? "书籍 \(entry.bookId)" : entry.bookName
+        let mark = store.chapter?.bookId == entry.bookId ? "✓ " : ""
+        let chapter = entry.chapterTitle.isEmpty ? "" : " · \(entry.chapterTitle)"
+        return mark + name + chapter
     }
 }
 
