@@ -49,6 +49,16 @@ swift test --disable-sandbox
 
 ---
 
+## 图标
+
+<img src="docs/app-icon.png" width="128" alt="QidianReader 图标：黑底白字「起点」">
+
+黑底白字「起点」，1024×1024，宋体 Black，图标外框透明圆角，只有黑与白两种颜色。
+
+`swift run` 直接运行的是裸可执行文件，没有 `.app` 包的 `Info.plist`，Dock 默认只会显示一个空白图标。`Sources/QidianReader/AppIcon.swift` 会在启动时把随包分发的 `AppIcon.icns` 设给 `NSApplication.applicationIconImage`，所以 Dock、Cmd-Tab 和「强制退出」面板里显示的都是这枚图标。
+
+---
+
 ## 分页阅读
 
 正文用 CoreText 按当前窗口大小、字号、行距排版，再切成左右两页显示：
@@ -149,17 +159,20 @@ QidianKit/
 │   │   └── WebChapterFetcher.swift    # 离屏 WKWebView + Fock（串行复用）
 │   └── QidianReader/
 │       ├── QidianReaderApp.swift      # 窗口、功能菜单入口、欢迎页
+│       ├── AppIcon.swift              # 启动时换上「起点」Dock 图标
 │       ├── LaunchOptions.swift        # 启动 Flag（--no-activate）
 │       ├── ReaderFunctionMenu.swift   # 一级功能菜单 + 打开章节/目录入口
 │       ├── ChapterCatalogSheet.swift  # 章节目录 sheet：分卷 / 搜索 / 选章
 │       ├── PaginatedReaderView.swift  # 双页分页 + CoreText 排版
 │       ├── ReaderStore.swift          # 阅读状态 / 目录状态 / 登录态 / 主题
-│       └── LoginSheet.swift           # 登录 sheet
+│       ├── LoginSheet.swift           # 登录 sheet
+│       └── Resources/AppIcon.icns     # 黑底白字「起点」图标（1024px）
 ├── Tests/
 │   ├── QidianKitTests/                # 21 个单测（目录解析 / 缓存 / 整本队列等）
-│   └── QidianReaderTests/             # 启动 Flag 解析测试
+│   └── QidianReaderTests/             # 启动 Flag 解析 / App 图标资源测试
 └── docs/
-    └── API.md                      # 接口分析
+    ├── API.md                         # 接口分析
+    └── app-icon.png                   # 图标预览（1024×1024）
 ```
 
 ---

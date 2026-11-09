@@ -11,6 +11,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        // 裸可执行文件没有 App 包图标，启动时手动装上「起点」图标。
+        if let icon = AppIcon.image {
+            NSApp.applicationIconImage = icon
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
