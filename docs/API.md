@@ -367,7 +367,7 @@ unicode-range: U+3400-4DB5;
 | 正文加密 | Fock WASM | WebKit 兜底 |
 | 频率限制 | 未公开阈值 | 建议 ≥ 300 ms/请求，失败指数退避 |
 
-本项目内置 350 ms 节流、403 自动 bootstrap 重试、202 直接报风控。
+本项目内置 350 ms 节流、403 自动 bootstrap 重试、202 直接报风控；整本后台下载在此之上再限制为每章 1–2 分钟。
 
 ---
 
@@ -383,10 +383,13 @@ unicode-range: U+3400-4DB5;
 | 本地缓存 | `ChapterCache` | 完整章节按书名写入 `~/.qidian/<书名>/<chapterId>.json` |
 | 阅读进度 | `ReadingHistoryStore` | 每本书一条，写入 `~/.qidian/progress.json`；启动时恢复章节和正文锚点 |
 | 付费解密 | `WebChapterFetcher` | 离屏 WKWebView + Fock（全局串行） |
-| 编排 | `QidianReadingSession` | 缓存优先，密文回退 WebKit；读完自动预取下一章 |
+| 编排 | `QidianReadingSession` | 缓存优先，密文回退 WebKit；读完自动预取下一章；打开书后按 1–2 分钟/章 后台补齐整本 |
+| 整本下载 | `WholeBookDownloadPlan` | 从当前章向后、绕回开头；跳过已缓存与试读章；`BookDownloadPacing` 控制 1–2 分钟间隔 |
 | 登录 | `QidianReader.LoginSheet` | GUI 内 WKWebView 登录页 + 自动抓 Cookie |
 
-自动预取只向后看一章：当前章拿到 `next` 后再请求一次；若返回 `isBuy == 0` 的试读片段，则按约定忽略，不写缓存、也不继续往后爬。因此不会对目录或整书产生批量请求。
+自动预取只向后看一章：当前章拿到 `next` 后再请求一次；若返回 `isBuy == 0` 的试读片段，则按约定忽略，不写缓存、也不继续往后爬。
+
+整本后台下载是打开一本书后自动启动的批量行为：`mCategory` 只请求一次目录，然后按目录顺序逐章调用 `getMChapterInfo`。为避免触发风控，每两章之间等待 `60 + 60 × 随机数` 秒（1–2 分钟）；启动前会扫描本地缓存，已落盘的章节不再请求，等待期间用户自己读过的章节也会跳过。试读/未购买章节在本次运行内只探测一次。切换书籍会取消上一本的队列，所以同一时间最多只有一个整本下载任务。
 
 MVP 客户端依赖 `getMChapterInfo` 和 `mCategory` 两个 JSON 接口；mCategory 每个进程内每本书只请求一次，除非用户手动刷新。搜索、书籍详情、评论、书签等端点保留在本文档中作为扩展参考。
 
