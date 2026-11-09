@@ -19,6 +19,7 @@ let package = Package(
         .executableTarget(
             name: "QidianReader",
             dependencies: ["QidianKit"],
+            resources: [.copy("Resources/AppIcon.icns")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
