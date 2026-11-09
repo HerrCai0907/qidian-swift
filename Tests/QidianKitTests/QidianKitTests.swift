@@ -108,6 +108,31 @@ final class QidianKitTests: XCTestCase {
         XCTAssertNil(catalog.chapter(withId: 42))
     }
 
+    func testCatalogChapterCountFallsBackToDeclaredTotal() throws {
+        // 卷里没有章节（接口只给了 cCnt）时，用 chapterTotalCnt。
+        let catalog = BookCatalog(
+            bookId: 1,
+            bookName: "书",
+            chapterTotalCnt: 1373,
+            volumes: [CatalogVolume(volumeId: 10, name: "卷", declaredChapterCount: 1373, chapters: [])]
+        )
+        XCTAssertEqual(catalog.chapterCount, 1373)
+        XCTAssertTrue(catalog.isEmpty)
+    }
+
+    func testCatalogChapterCountPrefersActualChapters() throws {
+        let catalog = BookCatalog(
+            bookId: 1,
+            bookName: "书",
+            chapterTotalCnt: 1373,
+            volumes: [CatalogVolume(volumeId: 10, name: "卷", declaredChapterCount: 99, chapters: [
+                CatalogChapter(chapterId: 100, title: "第一章"),
+            ])]
+        )
+        XCTAssertEqual(catalog.chapterCount, 1)
+        XCTAssertFalse(catalog.isEmpty)
+    }
+
     func testCatalogSearchMatchesTitle() throws {
         let catalog = BookCatalog(
             bookId: 1,

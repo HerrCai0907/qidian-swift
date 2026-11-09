@@ -148,11 +148,14 @@ public struct BookCatalog: Decodable, Sendable, Equatable, Identifiable {
     /// 按目录顺序展开的全部章节。
     public var allChapters: [CatalogChapter] { volumes.flatMap(\.chapters) }
 
+    /// 章节总数。逐卷累加而不是 `allChapters.count`：
+    /// 目录界面每次刷新都会读它，1000+ 章时 flatMap 的数组分配纯属浪费。
     public var chapterCount: Int {
-        allChapters.isEmpty ? chapterTotalCnt : allChapters.count
+        let count = volumes.reduce(0) { $0 + $1.chapters.count }
+        return count == 0 ? chapterTotalCnt : count
     }
 
-    public var isEmpty: Bool { allChapters.isEmpty }
+    public var isEmpty: Bool { volumes.allSatisfy { $0.chapters.isEmpty } }
 
     public func chapter(withId chapterId: Int64) -> CatalogChapter? {
         allChapters.first { $0.chapterId == chapterId }

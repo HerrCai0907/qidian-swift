@@ -34,6 +34,8 @@ final class ReaderStore {
     private(set) var catalog: BookCatalog?
     private(set) var catalogPhase: Phase = .idle
     private(set) var catalogBookId: Int64?
+    /// 目录每被写入一次就自增（刷新后即使章数不变也算新内容），供界面判断是否需要重建列表布局。
+    private(set) var catalogRevision = 0
     /// 每次主动“跳到某个历史位置”时自增，用于让分页视图重新应用锚点。
     private(set) var restoreGeneration = 0
     /// 当前页码与翻页提示，只显示在功能菜单里。
@@ -213,6 +215,7 @@ final class ReaderStore {
             let loaded = try await session.catalog(bookId: bookId, forceRefresh: forceRefresh)
             guard generation == catalogGeneration else { return }
             catalog = loaded
+            catalogRevision &+= 1
             catalogPhase = .idle
         } catch {
             guard generation == catalogGeneration else { return }

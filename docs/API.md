@@ -144,6 +144,8 @@ GET /webcommon/book/mCategory?bookId={bookId}&_csrfToken={token}
 > 注意：`sS == 1` 不代表一定不可读。限免活动期间仍标 1，实际以章节接口的 `price` / `isBuy` 为准。
 
 > 客户端实现：`QidianClient.catalog(bookId:)` 把响应解码成 `BookCatalog` / `CatalogVolume` / `CatalogChapter`；`QidianReadingSession.catalog(bookId:forceRefresh:)` 在进程内按 `bookId` 缓存整份目录，功能菜单「章节目录…」按卷展示并支持搜索、选章。
+>
+> 目录界面是懒加载的（`Sources/QidianReader/CatalogListLayout.swift`）：把「卷标题 + 章节」展开成固定行高的行并记录偏移，只渲染「可视范围 + 一屏缓冲区」的几十行，其余高度用透明占位撑住。滚动位置通过监听 SwiftUI `ScrollView` 背后的 `NSScrollView.clipView` 通知获取（macOS 上滚动不触发 SwiftUI 布局，`GeometryReader` + `PreferenceKey` 不会回调）；跳章/回顶部直接改 `clipView` 的滚动位置，因为目标行可能还没渲染。
 
 ### 4.2 章节 + 正文
 
@@ -376,6 +378,7 @@ unicode-range: U+3400-4DB5;
 | 能力 | Swift 类型 | 实现 |
 |---|---|---|
 | 目录 | `BookCatalog` / `CatalogVolume` / `CatalogChapter` | `QidianClient.catalog(bookId:)`；`QidianReadingSession.catalog(bookId:forceRefresh:)` 按书缓存 |
+| 目录懒加载 | `CatalogListLayout`（QidianReader） | 固定行高扁平化 + 可视窗口计算；界面只渲染可视范围 ± 一屏 |
 | 章节 | `ChapterData` / `ChapterInfo` | `QidianClient.chapter(bookId:chapterId:)` |
 | 正文解析 | `ChapterHTMLParser` | `<p>` / `span.content-text` → `[String]` |
 | 链接解析 | `ChapterRef` / `BookRef` | 章节支持 PC/移动站 URL 与 `bookId chapterId`；目录支持书籍页 URL 与纯 bookId |
