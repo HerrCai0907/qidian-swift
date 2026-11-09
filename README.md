@@ -77,6 +77,8 @@ swift test --disable-sandbox
 左上角「功能」→「章节目录…」打开当前书的目录：
 
 - 目录一次请求返回整本书，按卷分组；卷可以折叠/展开。
+- 列表是**懒加载**的：`CatalogListLayout` 把目录算成固定行高的扁平行，界面只渲染「可视范围 + 上下各一屏缓冲区」的几十行，其余行用透明占位撑住（总高度不变，滚动条和滚动位置都稳定）。1373 章的目录也只实例化 40 个左右的视图，打开、滚动、搜索、折叠都不再卡顿。
+- 滚动位置直接监听背后 `NSScrollView` 的 `clipView`（macOS 上滚动不会触发 SwiftUI 布局，`GeometryReader` + `PreferenceKey` 收不到回调），跳章/回顶部也直接改滚动位置，不依赖目标行已经渲染。
 - 顶部显示卷数、章节数和作者；当前章节会高亮并标「在读」，打开时自动滚到那一章。
 - 搜索框按章节名过滤（例如「冰封」「三百六十」）。
 - 点任意一章会关闭目录并直接载入该章正文。
@@ -132,7 +134,7 @@ swift test --disable-sandbox
 | 能力 | 实现 |
 |---|---|
 | 登录 | `WKWebView` 打开真实登录页，轮询到 `ywkey` 后保存 Cookie |
-| 目录 | `mCategory` 一次取全书目录；功能菜单 sheet 按卷展示、搜索、跳章 |
+| 目录 | `mCategory` 一次取全书目录；功能菜单 sheet 按卷展示、搜索、跳章（懒加载，只渲染可视区 + 缓冲区） |
 | 阅读 | `getMChapterInfo` 取章节 + 正文；密文回退 `WKWebView` 解密；CoreText 分页为左右双页 |
 | 本地缓存 | 完整章节按书名写入 `~/.qidian/<书名>/<chapterId>.json`；读完自动预取下一章；打开书后按 1–2 分钟/章 后台补齐整本，跳过已缓存 |
 | 阅读进度 | 每本书记录章节 + 正文锚点，启动时自动恢复上次页码 |
@@ -162,14 +164,15 @@ QidianKit/
 │       ├── AppIcon.swift              # 启动时换上「起点」Dock 图标
 │       ├── LaunchOptions.swift        # 启动 Flag（--no-activate）
 │       ├── ReaderFunctionMenu.swift   # 一级功能菜单 + 打开章节/目录入口
-│       ├── ChapterCatalogSheet.swift  # 章节目录 sheet：分卷 / 搜索 / 选章
+│       ├── ChapterCatalogSheet.swift  # 章节目录 sheet：分卷 / 搜索 / 选章（只渲染可视窗口）
+│       ├── CatalogListLayout.swift    # 目录行扁平化 / 固定行高 / 可视窗口计算
 │       ├── PaginatedReaderView.swift  # 双页分页 + CoreText 排版
 │       ├── ReaderStore.swift          # 阅读状态 / 目录状态 / 登录态 / 主题
 │       ├── LoginSheet.swift           # 登录 sheet
 │       └── Resources/AppIcon.icns     # 黑底白字「起点」图标（1024px）
 ├── Tests/
-│   ├── QidianKitTests/                # 21 个单测（目录解析 / 缓存 / 整本队列等）
-│   └── QidianReaderTests/             # 启动 Flag 解析 / App 图标资源测试
+│   ├── QidianKitTests/                # 23 个单测（目录解析 / 缓存 / 整本队列等）
+│   └── QidianReaderTests/             # 启动 Flag / App 图标 / 目录懒加载窗口计算（30 个单测）
 └── docs/
     ├── API.md                         # 接口分析
     └── app-icon.png                   # 图标预览（1024×1024）
