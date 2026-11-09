@@ -141,6 +141,69 @@ final class QidianKitTests: XCTestCase {
         XCTAssertTrue(catalog.isEmpty)
     }
 
+    // MARK: - Whole-book background download
+
+    func testWholeBookDownloadPlanStartsAtCurrentChapterAndWrapsAround() {
+        let catalog = makeCatalog(chapterIds: [10, 20, 30, 40, 50])
+        let plan = WholeBookDownloadPlan(catalog: catalog,
+                                         cachedChapterIds: [20],
+                                         startingAt: 30)
+
+        XCTAssertEqual(plan.totalChapters, 5)
+        XCTAssertEqual(plan.cachedChapters, 1)
+        XCTAssertEqual(plan.unavailableChapters, 0)
+        XCTAssertEqual(plan.chapters.map(\.chapterId), [30, 40, 50, 10])
+    }
+
+    func testWholeBookDownloadPlanSkipsKnownUnavailableAndUnknownStart() {
+        let catalog = makeCatalog(chapterIds: [10, 20, 30, 40, 50])
+        let plan = WholeBookDownloadPlan(catalog: catalog,
+                                         cachedChapterIds: [40],
+                                         unavailableChapterIds: [10, 30],
+                                         startingAt: 999)
+
+        // 起跑章不在目录里时从第一章开始。
+        XCTAssertEqual(plan.chapters.map(\.chapterId), [20, 50])
+        XCTAssertEqual(plan.cachedChapters, 1)
+        XCTAssertEqual(plan.unavailableChapters, 2)
+    }
+
+    func testWholeBookDownloadPlanIsEmptyWhenEverythingCached() {
+        let catalog = makeCatalog(chapterIds: [10, 20, 30])
+        let plan = WholeBookDownloadPlan(catalog: catalog,
+                                         cachedChapterIds: [10, 20, 30],
+                                         startingAt: 20)
+
+        XCTAssertTrue(plan.chapters.isEmpty)
+        XCTAssertEqual(plan.totalChapters, 3)
+        XCTAssertEqual(plan.cachedChapters, 3)
+    }
+
+    func testWholeBookDownloadPlanDropsDuplicateAndInvalidChapters() {
+        let catalog = makeCatalog(chapterIds: [10, 10, 0, 20])
+        let plan = WholeBookDownloadPlan(catalog: catalog, cachedChapterIds: [])
+
+        XCTAssertEqual(plan.totalChapters, 2)
+        XCTAssertEqual(plan.chapters.map(\.chapterId), [10, 20])
+    }
+
+    func testBookDownloadPacingUsesOnePlusOneRandomMinute() {
+        XCTAssertEqual(BookDownloadPacing.interval(randomValue: 0), 60, accuracy: 0.0001)
+        XCTAssertEqual(BookDownloadPacing.interval(randomValue: 0.25), 75, accuracy: 0.0001)
+        XCTAssertEqual(BookDownloadPacing.interval(randomValue: 0.5), 90, accuracy: 0.0001)
+        XCTAssertEqual(BookDownloadPacing.interval(randomValue: 1), 120, accuracy: 0.0001)
+        XCTAssertEqual(BookDownloadPacing.interval(randomValue: -1), 60, accuracy: 0.0001)
+        XCTAssertEqual(BookDownloadPacing.interval(randomValue: 2), 120, accuracy: 0.0001)
+    }
+
+    func testBookDownloadPacingNextIntervalStaysInRange() {
+        for _ in 0..<200 {
+            let interval = BookDownloadPacing.nextInterval()
+            XCTAssertGreaterThanOrEqual(interval, 60)
+            XCTAssertLessThan(interval, 120)
+        }
+    }
+
     // MARK: - Local chapter cache
 
     func testChapterCacheRoundTripUsesBookNameDirectory() throws {
@@ -263,6 +326,22 @@ final class QidianKitTests: XCTestCase {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("qidian-history-test-\(UUID().uuidString)", isDirectory: true)
             .appendingPathComponent(ReadingHistoryStore.fileName)
+    }
+
+    private func makeCatalog(chapterIds: [Int64]) -> BookCatalog {
+        BookCatalog(
+            bookId: 1037095853,
+            bookName: "牧者密续",
+            chapterTotalCnt: chapterIds.count,
+            volumes: [
+                CatalogVolume(volumeId: 1, name: "正文", chapters: chapterIds.enumerated().map { index, id in
+                    CatalogChapter(chapterId: id,
+                                   title: "第 \(index + 1) 章",
+                                   wordCount: 100,
+                                   uuid: index + 1)
+                })
+            ]
+        )
     }
 
     private func makeChapter(bookId: Int64 = 1037095853,

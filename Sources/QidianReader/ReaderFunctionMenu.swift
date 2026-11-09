@@ -43,9 +43,58 @@ struct ReaderFunctionMenu: View {
                         .disabled(true)
                 }
             }
+
+            if let download = store.wholeBookDownload,
+               download.bookId == chapter.bookId {
+                Divider()
+                downloadItems(download)
+            }
         } else {
             Button("尚未打开章节") {}
                 .disabled(true)
+        }
+    }
+
+    // MARK: - Whole-book download
+
+    @ViewBuilder
+    private func downloadItems(_ download: WholeBookDownloadStatus) -> some View {
+        Button(downloadLabel(download)) {}
+            .disabled(true)
+
+        switch download.phase {
+        case .paused:
+            Button("继续整本下载") { store.resumeWholeBookDownload() }
+        case .preparing, .waiting, .downloading:
+            Button("暂停整本下载") { store.pauseWholeBookDownload() }
+        case .failed:
+            Button("重试整本下载") { store.retryWholeBookDownload() }
+        case .finished:
+            if download.failedChapters > 0 {
+                Button("重试失败的 \(download.failedChapters) 章") { store.retryWholeBookDownload() }
+            }
+        }
+    }
+
+    private func downloadLabel(_ download: WholeBookDownloadStatus) -> String {
+        let progress = "\(download.cachedChapters)/\(download.totalChapters)"
+        switch download.phase {
+        case .preparing:
+            return "整本后台下载：准备中…"
+        case .waiting:
+            return "整本后台下载 \(progress) · 等待下一章"
+        case .downloading:
+            let title = download.currentChapterTitle ?? "下一章"
+            return "整本后台下载 \(progress) · \(title)"
+        case .paused:
+            return "整本后台下载已暂停 \(progress)"
+        case .finished:
+            var text = "整本后台下载完成 \(progress)"
+            if download.skippedChapters > 0 { text += " · 跳过 \(download.skippedChapters)" }
+            if download.failedChapters > 0 { text += " · 失败 \(download.failedChapters)" }
+            return text
+        case .failed(let reason):
+            return "整本后台下载中断 \(progress)：\(reason)"
         }
     }
 

@@ -38,6 +38,8 @@ final class ReaderStore {
     private(set) var restoreGeneration = 0
     /// 当前页码与翻页提示，只显示在功能菜单里。
     private(set) var readingStatus: ReadingStatus?
+    /// 当前书的整本后台下载进度。
+    private(set) var wholeBookDownload: WholeBookDownloadStatus?
 
     /// 用户粘贴的章节链接 / `bookId chapterId`。
     var input = ""
@@ -54,6 +56,8 @@ final class ReaderStore {
     private var didAttemptRestore = false
     private var loadGeneration = 0
     private var catalogGeneration = 0
+    /// 已经为哪本书启动过整本下载，避免每次翻章都重启队列。
+    private var wholeBookDownloadBookId: Int64?
 
     init() {
         if let jar = try? CookieJar.load(from: CookieJar.defaultURL) {
@@ -63,6 +67,11 @@ final class ReaderStore {
             session = QidianReadingSession(cookies: CookieJar(), cookieFile: CookieJar.defaultURL)
         }
         recentBooks = history.entries
+        session.onWholeBookDownloadUpdate = { [weak self] status in
+            Task { @MainActor [weak self] in
+                self?.wholeBookDownload = status
+            }
+        }
     }
 
     // MARK: - Login
@@ -82,6 +91,8 @@ final class ReaderStore {
         try? jar.save(to: CookieJar.defaultURL)
         session.client.updateCookies(jar)
         session.clearCache()
+        wholeBookDownloadBookId = nil
+        wholeBookDownload = nil
         isLoggedIn = jar.isLoggedIn
         isPresentingLogin = false
 
@@ -245,6 +256,32 @@ final class ReaderStore {
         readingStatus = status
     }
 
+    // MARK: - Whole-book background download
+
+    func pauseWholeBookDownload() {
+        session.pauseWholeBookDownload()
+    }
+
+    func resumeWholeBookDownload() {
+        session.resumeWholeBookDownload()
+    }
+
+    /// 失败/有漏章时手动重跑一次队列；已缓存的章节仍会跳过。
+    func retryWholeBookDownload() {
+        guard let chapter else { return }
+        wholeBookDownloadBookId = chapter.bookId
+        session.startWholeBookDownload(bookId: chapter.bookId,
+                                       from: chapter.chapterId,
+                                       force: true)
+    }
+
+    /// 打开新书时启动整本后台下载；同一本书翻章不会重启队列。
+    private func startWholeBookDownloadIfNeeded(for chapter: LoadedChapter) {
+        guard wholeBookDownloadBookId != chapter.bookId else { return }
+        wholeBookDownloadBookId = chapter.bookId
+        session.startWholeBookDownload(bookId: chapter.bookId, from: chapter.chapterId)
+    }
+
     @discardableResult
     private func load(bookId: Int64, chapterId: Int64) async -> Bool {
         loadGeneration &+= 1
@@ -257,6 +294,7 @@ final class ReaderStore {
             chapter = loaded
             input = "https://www.qidian.com/chapter/\(bookId)/\(chapterId)/"
             phase = .idle
+            startWholeBookDownloadIfNeeded(for: loaded)
             return true
         } catch {
             guard generation == loadGeneration else { return false }
